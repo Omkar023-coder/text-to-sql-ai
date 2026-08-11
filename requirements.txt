@@ -6,3 +6,5 @@ pydantic
 pytest
 httpx
 openai
+sentence-transformers
+numpy
