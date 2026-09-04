@@ -43,6 +43,22 @@ STOP_WORDS = {
 }
 
 
+def stem(word: str) -> str:
+    """
+    Minimal suffix stripping to normalize
+    plural and common verb forms.
+
+    customers → customer
+    products  → product
+    orders    → order
+    """
+
+    if len(word) > 4 and word.endswith("s"):
+        return word[:-1]
+
+    return word
+
+
 def tokenize(text: str):
     """
     Convert text into normalized words.
@@ -54,7 +70,7 @@ def tokenize(text: str):
     )
 
     return [
-        word
+        stem(word)
         for word in words
         if word not in STOP_WORDS
     ]
@@ -193,7 +209,7 @@ def metadata_search(
         if column_matches:
 
             score += (
-                5 * len(column_matches)
+                8 * len(column_matches)
             )
 
         # =====================================================
@@ -259,6 +275,47 @@ def metadata_search(
             ):
 
                 score += 1
+
+        # =====================================================
+        # 6. Relationship penalty
+        #
+        # FK/relationship columns (orders.customer_id,
+        # orders.product_id) match generic words like
+        # "customer" and "product" in almost every question.
+        # Apply a penalty so they only rank highly when
+        # the question explicitly asks about joins,
+        # purchases, or cross-table operations.
+        # =====================================================
+
+        doc_category = metadata.get(
+            "category",
+            ""
+        ).lower()
+
+        RELATIONSHIP_SIGNALS = {
+            "purchase",
+            "order",
+            "transaction",
+            "join",
+            "bought",
+            "buy",
+            "sale",
+            "sold",
+            "revenue",
+            "generate",
+        }
+
+        if doc_category == "relationship":
+
+            has_signal = bool(
+                question_tokens
+                .intersection(
+                    RELATIONSHIP_SIGNALS
+                )
+            )
+
+            if not has_signal:
+                score -= 8
 
         # =====================================================
         # Save relevant results
