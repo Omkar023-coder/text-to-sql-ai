@@ -28,6 +28,13 @@ client = OpenAI(
 
 
 # ============================================================
+# Model
+# ============================================================
+
+MODEL = "openai/gpt-oss-20b"
+
+
+# ============================================================
 # Full Schema Fallback
 #
 # Used when no RAG context is provided.
@@ -192,7 +199,7 @@ def generate_sql(
     # --------------------------------------------------------
 
     response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+        model=MODEL,
         messages=[
             {
                 "role": "system",
