@@ -8,3 +8,4 @@ httpx
 openai
 sentence-transformers
 numpy
+aiofiles

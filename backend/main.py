@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from backend.agents.orchestrator import (
@@ -6,11 +10,22 @@ from backend.agents.orchestrator import (
     process_clarified_question
 )
 from backend.agents.sql_generator import MODEL
+from backend.rag.schema_data import get_all_documents
 from backend.security.sql_validator import validate_sql
 from backend.database.executor import execute_query
 from backend.database.connection import engine
 
 from sqlalchemy import text
+
+
+# ============================================================
+# Paths
+# ============================================================
+
+# Resolve paths relative to this file so uvicorn can be run
+# from any working directory without breaking static serving.
+_THIS_DIR = Path(__file__).resolve().parent
+_FRONTEND_DIST = _THIS_DIR.parent / "frontend" / "dist"
 
 
 # ============================================================
@@ -272,3 +287,70 @@ def health():
         "database": db_status,
         "model": MODEL
     }
+
+
+# ============================================================
+# GET /schema
+# ============================================================
+
+@app.get("/schema")
+def schema():
+    """
+    Return table and column metadata from the schema corpus.
+
+    Used by the frontend for the schema explorer and
+    starter question suggestions.
+
+    No LLM call is made. Data comes from schema_data.py.
+    """
+
+    documents = get_all_documents()
+
+    # Group columns by table
+    tables: dict[str, list[dict]] = {}
+
+    for doc in documents:
+        table = doc["table"]
+
+        if table not in tables:
+            tables[table] = []
+
+        tables[table].append({
+            "name": doc["column"],
+            "data_type": doc["data_type"],
+            "description": doc["description"]
+        })
+
+    return {
+        "tables": [
+            {
+                "name": table_name,
+                "columns": columns
+            }
+            for table_name, columns in tables.items()
+        ]
+    }
+
+
+# ============================================================
+# Static file serving — React frontend
+#
+# Mounts frontend/dist/ when the build exists.
+# During development the Vite dev server (port 5173) is used
+# instead. The mount is skipped gracefully if dist/ has not
+# been built yet so pytest and development still work.
+# ============================================================
+
+if _FRONTEND_DIST.exists():
+
+    # Serve hashed JS/CSS assets under /assets/
+    app.mount(
+        "/assets",
+        StaticFiles(directory=str(_FRONTEND_DIST / "assets")),
+        name="assets"
+    )
+
+    @app.get("/", include_in_schema=False)
+    def serve_frontend():
+        """Serve the React application."""
+        return FileResponse(str(_FRONTEND_DIST / "index.html"))
