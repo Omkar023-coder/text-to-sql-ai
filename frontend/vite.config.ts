@@ -44,5 +44,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    // Recharts is a large library — raise the advisory limit to avoid
+    // noisy warnings during normal development builds.
+    chunkSizeWarningLimit: 800,
   },
 });

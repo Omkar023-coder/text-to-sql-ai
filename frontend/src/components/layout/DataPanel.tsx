@@ -1,31 +1,14 @@
 /**
- * DataPanel.tsx — Phase 9.4
+ * DataPanel.tsx — Phase 9.5.2
  *
- * Right panel — SQL editor, execution controls, results table.
+ * Right panel — SQL editor, execution controls, results table,
+ * and visualization (Phase 9.5).
  *
- * Props:
- *   activeSql  — SQL from the latest sql_generated turn.
- *                undefined when no SQL exists yet (empty state).
- *   onReset    — called by parent when conversation resets so
- *                execution state is cleared.
- *
- * Layout (desktop, expanded):
- *
- *   ┌─────────────────────────────┐
- *   │  Query / Data        [›]    │  ← header + collapse toggle
- *   ├─────────────────────────────┤
- *   │  SQL Editor                 │  ← SqlEditor (editable)
- *   │  [ SELECT · Read-only ]     │  ← safety badge
- *   │  [ Copy ]       [ Execute ] │  ← ExecutionControls
- *   │  ✓ 10 rows · 42 ms          │  ← ExecutionStatus
- *   ├─────────────────────────────┤
- *   │  Results                    │  ← section header
- *   │  10 rows  [Search…] [◄ ►]   │  ← ResultsToolbar
- *   │  ┌──────────────────────┐   │
- *   │  │ col1  │ col2  │ col3 │   │  ← ResultsTable
- *   │  │ ...   │ ...   │ ...  │   │
- *   │  └──────────────────────┘   │
- *   └─────────────────────────────┘
+ * Phase 9.5 additions:
+ *   - ResultsViewToggle: Table / Chart tab switcher
+ *   - ChartPanel: renders bar / line / pie via Recharts
+ *   - detectChartConfig auto-suggests chart type on execution
+ *   - activeView, activeChartType, activeYKey local state
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -43,10 +26,14 @@ import { ExecutionControls } from "@/components/data/ExecutionControls";
 import { ExecutionStatus } from "@/components/data/ExecutionStatus";
 import { ResultsTable } from "@/components/data/ResultsTable";
 import { ResultsToolbar, PAGE_SIZE } from "@/components/data/ResultsToolbar";
+import { ResultsViewToggle } from "@/components/data/ResultsViewToggle";
+import { ChartPanel } from "@/components/data/ChartPanel";
 import { useQueryExecution } from "@/hooks/useQueryExecution";
+import { detectChartConfig } from "@/lib/chartSuggestion";
+import type { ChartType } from "@/lib/chartSuggestion";
 import { cn } from "@/lib/utils";
 
-// ── Sort helpers ──────────────────────────────────────────
+// ── Sort helpers (unchanged from Phase 9.4) ───────────────
 
 function compareValues(a: unknown, b: unknown, dir: "asc" | "desc"): number {
   const nullA = a === null || a === undefined;
@@ -79,41 +66,64 @@ interface DataPanelProps {
 export function DataPanel({ activeSql }: DataPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
 
-  // ── Execution state ──────────────────────────────────
+  // ── Execution state ───────────────────────────────────
   const exec = useQueryExecution();
 
-  // ── Local editor SQL (may diverge from generatedSql) ──
+  // ── SQL editor state ──────────────────────────────────
   const [editorSql, setEditorSql] = useState("");
   const [generatedSql, setGeneratedSql] = useState("");
 
-  // ── Table UX state ───────────────────────────────────
+  // ── Table UX state ────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [sortCol, setSortCol] = useState(-1);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
+  // ── Visualization state (Phase 9.5) ───────────────────
+  const [activeView, setActiveView] = useState<"table" | "chart">("table");
+  const [activeChartType, setActiveChartType] = useState<ChartType>("bar");
+  const [activeYKey, setActiveYKey] = useState<string>("");
+
   // ── Sync activeSql from conversation ──────────────────
-  // When a new SQL is generated, seed the editor and clear results.
   useEffect(() => {
     if (!activeSql) return;
     setEditorSql(activeSql);
     setGeneratedSql(activeSql);
     exec.reset();
+    // Reset table UX
     setSearchQuery("");
     setCurrentPage(1);
     setSortCol(-1);
     setSortDir("asc");
+    // Reset visualization state
+    setActiveView("table");
+    setActiveChartType("bar");
+    setActiveYKey("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSql]);
 
-  // ── Derived: is SQL edited vs generated ──────────────
-  const isEdited =
-    editorSql.trim() !== generatedSql.trim() && generatedSql.trim() !== "";
-
-  // ── Filtered + sorted + paginated rows ───────────────
+  // ── Auto-suggest chart type after successful execution ─
   const columns = exec.result?.columns ?? [];
   const rawRows = exec.result?.rows ?? [];
 
+  // Chart config is derived purely from execution results
+  const chartConfig = useMemo(
+    () => detectChartConfig(columns, rawRows),
+    [columns, rawRows]
+  );
+
+  useEffect(() => {
+    if (exec.status !== "success" || !chartConfig) return;
+    const suggested = chartConfig.suggestedType;
+    setActiveChartType(suggested === "none" ? "bar" : suggested);
+    setActiveYKey(chartConfig.yKeys[0] ?? "");
+  }, [exec.status, chartConfig]);
+
+  // ── Derived: edited SQL indicator ─────────────────────
+  const isEdited =
+    editorSql.trim() !== generatedSql.trim() && generatedSql.trim() !== "";
+
+  // ── Filtered + sorted + paginated rows ────────────────
   const filteredRows = useMemo(() => {
     if (!searchQuery.trim()) return rawRows;
     const q = searchQuery.toLowerCase();
@@ -141,7 +151,7 @@ export function DataPanel({ activeSql }: DataPanelProps) {
     return sortedRows.slice(start, start + PAGE_SIZE);
   }, [sortedRows, currentPage]);
 
-  // ── Reset page when search/sort changes ──────────────
+  // ── Reset page on search/sort change ──────────────────
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, sortCol, sortDir]);
@@ -173,13 +183,113 @@ export function DataPanel({ activeSql }: DataPanelProps) {
 
   const hasSql = editorSql.trim().length > 0;
   const hasResult = exec.status === "success";
+  const chartAvailable = chartConfig !== null;
 
-  // ─────────────────────────────────────────────────────
-  // Desktop panel
+  // ── Results section (shared between desktop and mobile) ─
+
+  function renderSqlSection() {
+    return (
+      <div className="p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Code2 className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {isEdited ? "Modified SQL" : "Generated SQL"}
+          </span>
+        </div>
+        <SqlEditor
+          value={editorSql}
+          onChange={setEditorSql}
+          isEdited={isEdited}
+          disabled={exec.isLoading}
+        />
+        <ExecutionControls
+          sql={editorSql}
+          isLoading={exec.isLoading}
+          hasResult={hasResult}
+          onExecute={handleExecute}
+        />
+        <ExecutionStatus
+          status={exec.status}
+          rowCount={exec.result?.rowCount}
+          executionMs={exec.result?.executionMs}
+          error={exec.error}
+        />
+      </div>
+    );
+  }
+
+  function renderResultsSection() {
+    if (exec.status !== "success" && exec.status !== "error") return null;
+
+    return (
+      <div className="p-4 space-y-3">
+        {/* Section header + view toggle */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Table2 className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Results
+            </span>
+          </div>
+
+          {exec.status === "success" && columns.length > 0 && (
+            <ResultsViewToggle
+              activeView={activeView}
+              chartAvailable={chartAvailable}
+              onViewChange={setActiveView}
+            />
+          )}
+        </div>
+
+        {exec.status === "success" && columns.length > 0 && (
+          <>
+            {activeView === "table" && (
+              <>
+                <ResultsToolbar
+                  totalRows={rawRows.length}
+                  filteredRows={filteredRows.length}
+                  currentPage={currentPage}
+                  searchQuery={searchQuery}
+                  onSearchChange={(q) => {
+                    setSearchQuery(q);
+                    setCurrentPage(1);
+                  }}
+                  onPageChange={setCurrentPage}
+                />
+                <div className="rounded-md border border-border overflow-hidden">
+                  <ResultsTable
+                    columns={columns}
+                    rows={rawRows}
+                    visibleRows={pagedRows}
+                    sortCol={sortCol}
+                    sortDir={sortDir}
+                    onSortChange={handleSortChange}
+                  />
+                </div>
+              </>
+            )}
+
+            {activeView === "chart" && (
+              <ChartPanel
+                columns={columns}
+                rows={rawRows}
+                chartConfig={chartConfig}
+                activeType={activeChartType}
+                activeYKey={activeYKey}
+                onTypeChange={setActiveChartType}
+                onYKeyChange={setActiveYKey}
+              />
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   // ─────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Desktop ──────────────────────────────────── */}
+      {/* ── Desktop panel ────────────────────────────── */}
       <aside
         className={cn(
           "hidden lg:flex flex-col h-full border-l border-border bg-card",
@@ -213,11 +323,11 @@ export function DataPanel({ activeSql }: DataPanelProps) {
           </Button>
         </div>
 
-        {/* Content — only shown when not collapsed */}
+        {/* Content */}
         {!collapsed && (
           <div className="flex-1 overflow-y-auto">
             {!hasSql ? (
-              /* ── Empty state ── */
+              /* Empty state */
               <div className="flex flex-col items-center justify-center h-full p-8 text-center">
                 <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-muted mb-5">
                   <BarChart3 className="h-7 w-7 text-muted-foreground" />
@@ -234,91 +344,18 @@ export function DataPanel({ activeSql }: DataPanelProps) {
                 </div>
               </div>
             ) : (
-              /* ── SQL editor + results ── */
               <div className="flex flex-col gap-0 divide-y divide-border">
-                {/* SQL section */}
-                <div className="p-4 space-y-3">
-                  {/* Section header */}
-                  <div className="flex items-center gap-2">
-                    <Code2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      {isEdited ? "Modified SQL" : "Generated SQL"}
-                    </span>
-                  </div>
-
-                  {/* Editor */}
-                  <SqlEditor
-                    value={editorSql}
-                    onChange={setEditorSql}
-                    isEdited={isEdited}
-                    disabled={exec.isLoading}
-                  />
-
-                  {/* Controls */}
-                  <ExecutionControls
-                    sql={editorSql}
-                    isLoading={exec.isLoading}
-                    hasResult={hasResult}
-                    onExecute={handleExecute}
-                  />
-
-                  {/* Status */}
-                  <ExecutionStatus
-                    status={exec.status}
-                    rowCount={exec.result?.rowCount}
-                    executionMs={exec.result?.executionMs}
-                    error={exec.error}
-                  />
-                </div>
-
-                {/* Results section — only shown after execution */}
-                {(exec.status === "success" || exec.status === "error") && (
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Table2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Results
-                      </span>
-                    </div>
-
-                    {exec.status === "success" && columns.length > 0 && (
-                      <>
-                        <ResultsToolbar
-                          totalRows={rawRows.length}
-                          filteredRows={filteredRows.length}
-                          currentPage={currentPage}
-                          searchQuery={searchQuery}
-                          onSearchChange={(q) => {
-                            setSearchQuery(q);
-                            setCurrentPage(1);
-                          }}
-                          onPageChange={setCurrentPage}
-                        />
-
-                        <div className="rounded-md border border-border overflow-hidden">
-                          <ResultsTable
-                            columns={columns}
-                            rows={rawRows}
-                            visibleRows={pagedRows}
-                            sortCol={sortCol}
-                            sortDir={sortDir}
-                            onSortChange={handleSortChange}
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
+                {renderSqlSection()}
+                {renderResultsSection()}
               </div>
             )}
           </div>
         )}
       </aside>
 
-      {/* ── Mobile bottom drawer ────────────────────── */}
+      {/* ── Mobile bottom drawer ─────────────────────── */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-20">
         <div className="border-t border-border bg-card max-h-[60vh] flex flex-col">
-          {/* Drawer header */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
             <div className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -336,7 +373,6 @@ export function DataPanel({ activeSql }: DataPanelProps) {
             </Button>
           </div>
 
-          {/* Drawer content */}
           {!collapsed && (
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {!hasSql ? (
@@ -363,17 +399,40 @@ export function DataPanel({ activeSql }: DataPanelProps) {
                     executionMs={exec.result?.executionMs}
                     error={exec.error}
                   />
+
                   {exec.status === "success" && columns.length > 0 && (
-                    <div className="rounded-md border border-border overflow-hidden">
-                      <ResultsTable
-                        columns={columns}
-                        rows={rawRows}
-                        visibleRows={pagedRows}
-                        sortCol={sortCol}
-                        sortDir={sortDir}
-                        onSortChange={handleSortChange}
+                    <>
+                      <ResultsViewToggle
+                        activeView={activeView}
+                        chartAvailable={chartAvailable}
+                        onViewChange={setActiveView}
                       />
-                    </div>
+
+                      {activeView === "table" && (
+                        <div className="rounded-md border border-border overflow-hidden">
+                          <ResultsTable
+                            columns={columns}
+                            rows={rawRows}
+                            visibleRows={pagedRows}
+                            sortCol={sortCol}
+                            sortDir={sortDir}
+                            onSortChange={handleSortChange}
+                          />
+                        </div>
+                      )}
+
+                      {activeView === "chart" && (
+                        <ChartPanel
+                          columns={columns}
+                          rows={rawRows}
+                          chartConfig={chartConfig}
+                          activeType={activeChartType}
+                          activeYKey={activeYKey}
+                          onTypeChange={setActiveChartType}
+                          onYKeyChange={setActiveYKey}
+                        />
+                      )}
+                    </>
                   )}
                 </>
               )}
