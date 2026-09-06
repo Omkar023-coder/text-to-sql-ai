@@ -24,11 +24,14 @@ type ConversationAPI = ReturnType<typeof useConversation>;
 
 interface ChatPanelProps {
   conversation: ConversationAPI;
+  /** Turn id to scroll to and highlight — set when a history query is clicked */
+  selectedTurnId?: string | null;
 }
 
-export function ChatPanel({ conversation }: ChatPanelProps) {
+export function ChatPanel({ conversation, selectedTurnId }: ChatPanelProps) {
   const [inputValue, setInputValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const {
     turns,
@@ -47,6 +50,21 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
+
+  // Scroll to and highlight a specific turn when selected from history
+  useEffect(() => {
+    if (!selectedTurnId) return;
+    // Wait one frame for the DOM to reflect the restored turns
+    const rafId = requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      const element = container?.querySelector(
+        `[data-turn-id="${selectedTurnId}"]`
+      ) as HTMLElement | null;
+      if (!element) return;
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [selectedTurnId, turns]);
 
   // ── Submit a new question ──────────────────────────────
 
@@ -147,7 +165,7 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
   return (
     <main className="flex flex-col h-full bg-background overflow-hidden">
       {/* ── Message area ──────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={scrollContainerRef}>
         {!hasMessages ? (
           <EmptyState onSelectStarter={handleSelectStarter} />
         ) : (
@@ -157,6 +175,7 @@ export function ChatPanel({ conversation }: ChatPanelProps) {
                 key={turn.id}
                 turn={turn}
                 isLoading={loadingTurnId === turn.id}
+                isSelected={turn.id === selectedTurnId}
                 onClarify={handleClarify}
                 onRetry={handleRetry}
               />

@@ -14,6 +14,7 @@
  */
 
 import type { Turn } from "@/types/conversation";
+import { cn } from "@/lib/utils";
 import { UserMessage, AssistantMessage } from "./MessageBubble";
 import { AskingBubble } from "./AskingBubble";
 import { SqlGeneratedBubble } from "./SqlGeneratedBubble";
@@ -24,15 +25,23 @@ interface TurnViewProps {
   turn: Turn;
   /** True when this specific turn is the one currently loading */
   isLoading: boolean;
+  /** True when this turn is the one selected from history */
+  isSelected?: boolean;
   /** Called when user picks a clarification answer */
   onClarify: (turnId: string, answer: string) => void;
   /** Called when user retries after an error */
   onRetry: (question: string) => void;
 }
 
-export function TurnView({ turn, isLoading, onClarify, onRetry }: TurnViewProps) {
+export function TurnView({ turn, isLoading, isSelected = false, onClarify, onRetry }: TurnViewProps) {
   return (
-    <div className="space-y-3">
+    <div
+      className={cn(
+        "space-y-3 rounded-xl transition-colors duration-200",
+        isSelected && "ring-2 ring-primary/30 bg-primary/5 p-3 -mx-3"
+      )}
+      data-turn-id={turn.id}
+    >
       {/* User message */}
       <UserMessage question={turn.question} />
 

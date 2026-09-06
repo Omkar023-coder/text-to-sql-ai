@@ -50,6 +50,7 @@ type Action =
   | { type: "EXECUTE_START"; sql: string }
   | { type: "EXECUTE_SUCCESS"; columns: string[]; rows: unknown[][]; executionMs: number }
   | { type: "EXECUTE_ERROR"; message: string }
+  | { type: "RESTORE_RESULT"; result: ExecutionResult; sql: string }
   | { type: "RESET" };
 
 // ============================================================
@@ -113,6 +114,16 @@ function reducer(
         status: "error",
         error: action.message,
         result: null,
+      };
+    }
+
+    case "RESTORE_RESULT": {
+      return {
+        ...state,
+        status: "success",
+        result: action.result,
+        executedSql: action.sql,
+        error: null,
       };
     }
 
@@ -212,6 +223,17 @@ export function useQueryExecution() {
   );
 
   /**
+   * Restore a previously saved execution result without re-running SQL.
+   * Called when a history entry is selected.
+   */
+  const restoreResult = useCallback(
+    (result: ExecutionResult, sql: string) => {
+      dispatch({ type: "RESTORE_RESULT", result, sql });
+    },
+    []
+  );
+
+  /**
    * Reset all execution state (called on new conversation).
    */
   const reset = useCallback(() => {
@@ -229,6 +251,7 @@ export function useQueryExecution() {
     setGeneratedSql,
     updateCurrentSql,
     execute,
+    restoreResult,
     reset,
   };
 }

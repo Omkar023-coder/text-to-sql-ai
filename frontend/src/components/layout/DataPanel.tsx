@@ -1,17 +1,13 @@
 /**
- * DataPanel.tsx — Phase 9.5.2
+ * DataPanel.tsx — Phase 9.6
  *
- * Right panel — SQL editor, execution controls, results table,
- * and visualization (Phase 9.5).
- *
- * Phase 9.5 additions:
- *   - ResultsViewToggle: Table / Chart tab switcher
- *   - ChartPanel: renders bar / line / pie via Recharts
- *   - detectChartConfig auto-suggests chart type on execution
- *   - activeView, activeChartType, activeYKey local state
+ * Adds `restoredResult` prop: when a history entry is restored,
+ * execution state is pre-seeded with the saved result so the
+ * user sees the table/chart without re-executing SQL.
+ * `restoredChartType` and `restoredChartYKey` restore visualization.
  */
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   BarChart3,
   ChevronLeft,
@@ -30,6 +26,7 @@ import { ResultsViewToggle } from "@/components/data/ResultsViewToggle";
 import { ChartPanel } from "@/components/data/ChartPanel";
 import { useQueryExecution } from "@/hooks/useQueryExecution";
 import { detectChartConfig } from "@/lib/chartSuggestion";
+import type { ExecutionResult } from "@/hooks/useQueryExecution";
 import type { ChartType } from "@/lib/chartSuggestion";
 import { cn } from "@/lib/utils";
 
@@ -59,11 +56,31 @@ function compareValues(a: unknown, b: unknown, dir: "asc" | "desc"): number {
 
 interface DataPanelProps {
   activeSql?: string;
+  /** Pre-seeded result from a restored history entry — no re-execution needed */
+  restoredResult?: ExecutionResult | null;
+  restoredChartType?: ChartType | null;
+  restoredChartYKey?: string;
+  /**
+   * Called when /execute succeeds so App.tsx can persist the result
+   * into the matching history entry. Receives the result + current
+   * chart selection so visualization state is also saved.
+   */
+  onExecutionSuccess?: (
+    result: ExecutionResult,
+    chartType: ChartType,
+    chartYKey: string
+  ) => void;
 }
 
 // ── Component ─────────────────────────────────────────────
 
-export function DataPanel({ activeSql }: DataPanelProps) {
+export function DataPanel({
+  activeSql,
+  restoredResult,
+  restoredChartType,
+  restoredChartYKey,
+  onExecutionSuccess,
+}: DataPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   // ── Execution state ───────────────────────────────────
@@ -89,18 +106,29 @@ export function DataPanel({ activeSql }: DataPanelProps) {
     if (!activeSql) return;
     setEditorSql(activeSql);
     setGeneratedSql(activeSql);
-    exec.reset();
-    // Reset table UX
+
     setSearchQuery("");
     setCurrentPage(1);
     setSortCol(-1);
     setSortDir("asc");
-    // Reset visualization state
-    setActiveView("table");
-    setActiveChartType("bar");
-    setActiveYKey("");
+
+    if (restoredResult) {
+      // Mark that we're restoring so onExecutionSuccess doesn't fire
+      isRestoringRef.current = true;
+      exec.restoreResult(restoredResult, activeSql);
+      // Allow future real executions to notify
+      setTimeout(() => { isRestoringRef.current = false; }, 0);
+      setActiveView("table");
+      setActiveChartType(restoredChartType ?? "bar");
+      setActiveYKey(restoredChartYKey ?? restoredResult.columns[1] ?? "");
+    } else {
+      exec.reset();
+      setActiveView("table");
+      setActiveChartType("bar");
+      setActiveYKey("");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSql]);
+  }, [activeSql, restoredResult, restoredChartType, restoredChartYKey]);
 
   // ── Auto-suggest chart type after successful execution ─
   const columns = exec.result?.columns ?? [];
@@ -118,6 +146,18 @@ export function DataPanel({ activeSql }: DataPanelProps) {
     setActiveChartType(suggested === "none" ? "bar" : suggested);
     setActiveYKey(chartConfig.yKeys[0] ?? "");
   }, [exec.status, chartConfig]);
+
+  // ── Notify App.tsx when execution succeeds so the history ─
+  // entry can be updated with the result + chart state.
+  // isRestoringRef is true during a history restore so the
+  // callback is not fired for pre-loaded results.
+  const isRestoringRef = useRef(false);
+  useEffect(() => {
+    if (exec.status === "success" && exec.result && !isRestoringRef.current) {
+      onExecutionSuccess?.(exec.result, activeChartType, activeYKey);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exec.status, exec.result]);
 
   // ── Derived: edited SQL indicator ─────────────────────
   const isEdited =

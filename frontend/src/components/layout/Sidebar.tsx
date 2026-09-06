@@ -1,24 +1,39 @@
 /**
- * Sidebar.tsx
+ * Sidebar.tsx — Phase 9.6 (session-based)
  *
- * Left panel — approximately 280px wide.
- *
- * Props:
- *   onNewConversation — called when user clicks "+" to start a
- *                       new conversation. Lifted from App.tsx
- *                       so it can reset ChatPanel state.
+ * Left panel: branding, health badge, session-based history list,
+ * and schema explorer.
  */
 
 import { Bot } from "lucide-react";
 import { HealthBadge } from "@/components/sidebar/HealthBadge";
 import { HistoryList } from "@/components/sidebar/HistoryList";
 import { SchemaExplorer } from "@/components/sidebar/SchemaExplorer";
+import type { ChatSession, SessionTurn } from "@/lib/historyStorage";
 
 interface SidebarProps {
+  sessions: ChatSession[];
+  activeSessionId: string | null;
+  activeTurnId: string | null;
   onNewConversation: () => void;
+  onSelectSession: (session: ChatSession) => void;
+  onSelectTurn: (session: ChatSession, turn: SessionTurn) => void;
+  onPinSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
+  onClearHistory: () => void;
 }
 
-export function Sidebar({ onNewConversation }: SidebarProps) {
+export function Sidebar({
+  sessions,
+  activeSessionId,
+  activeTurnId,
+  onNewConversation,
+  onSelectSession,
+  onSelectTurn,
+  onPinSession,
+  onDeleteSession,
+  onClearHistory,
+}: SidebarProps) {
   return (
     <aside className="flex flex-col h-full border-r border-border bg-card overflow-hidden">
       {/* Branding */}
@@ -41,13 +56,26 @@ export function Sidebar({ onNewConversation }: SidebarProps) {
         <HealthBadge />
       </div>
 
-      {/* History — passes callback down to the + button */}
-      <div className="shrink-0 max-h-52 overflow-hidden border-b border-border">
-        <HistoryList onNewConversation={onNewConversation} />
+      {/* History — 55% of remaining space */}
+      <div
+        className="flex flex-col border-b border-border"
+        style={{ flex: "0 0 55%", minHeight: 0 }}
+      >
+        <HistoryList
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          activeTurnId={activeTurnId}
+          onNewConversation={onNewConversation}
+          onSelectSession={onSelectSession}
+          onSelectTurn={onSelectTurn}
+          onPin={onPinSession}
+          onDelete={onDeleteSession}
+          onClear={onClearHistory}
+        />
       </div>
 
-      {/* Schema explorer — fills remaining space */}
-      <div className="flex-1 overflow-hidden">
+      {/* Schema explorer — remaining 45% */}
+      <div className="flex-1 overflow-hidden min-h-0">
         <SchemaExplorer />
       </div>
     </aside>

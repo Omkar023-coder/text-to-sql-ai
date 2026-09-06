@@ -55,6 +55,14 @@ type Action =
   | { type: "CLARIFY_START"; id: string }
   | { type: "CLARIFY_DONE"; id: string; response: ClarifyResponse }
   | { type: "CLARIFY_ERROR"; id: string; message: string }
+  | {
+      type: "RESTORE_TURN";
+      turn: Turn;
+    }
+  | {
+      type: "RESTORE_TURNS";
+      turns: Turn[];
+    }
   | { type: "RESET" };
 
 // ============================================================
@@ -155,6 +163,24 @@ function reducer(
       };
     }
 
+    case "RESTORE_TURN": {
+      // Directly insert a completed turn from history.
+      // Never goes through "asking" state — no API calls.
+      return {
+        turns: [action.turn],
+        loadingTurnId: null,
+      };
+    }
+
+    case "RESTORE_TURNS": {
+      // Restore all turns of a saved ChatSession at once.
+      // Never goes through "asking" state — no API calls.
+      return {
+        turns: action.turns,
+        loadingTurnId: null,
+      };
+    }
+
     case "RESET": {
       return initialState;
     }
@@ -224,6 +250,23 @@ export function useConversation() {
     dispatch({ type: "RESET" });
   }, []);
 
+  /**
+   * Directly insert a completed turn from history.
+   * Does NOT call /ask, /clarify, or /execute.
+   * Does NOT show "Thinking..." loading state.
+   */
+  const restoreTurn = useCallback((turn: Turn) => {
+    dispatch({ type: "RESTORE_TURN", turn });
+  }, []);
+
+  /**
+   * Restore all turns from a saved ChatSession at once.
+   * Does NOT call any API. No loading state shown.
+   */
+  const restoreAllTurns = useCallback((turns: Turn[]) => {
+    dispatch({ type: "RESTORE_TURNS", turns });
+  }, []);
+
   return {
     turns: state.turns,
     loadingTurnId: state.loadingTurnId,
@@ -237,5 +280,7 @@ export function useConversation() {
     resolveClarify,
     failClarify,
     resetConversation,
+    restoreTurn,
+    restoreAllTurns,
   };
 }

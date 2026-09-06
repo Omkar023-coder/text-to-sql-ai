@@ -382,3 +382,122 @@ describe("useConversation — multiple concurrent turns", () => {
     expect(turn2?.error).toBe("Error on second only");
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// Phase 9.6 — History restore tests
+// ═══════════════════════════════════════════════════════════
+
+describe("useConversation — restoreTurn (Phase 9.6)", () => {
+  function setup() {
+    return renderHook(() => useConversation());
+  }
+
+  const restoredTurn = {
+    id: "history-abc",
+    question: "How many customers do we have?",
+    status: "sql_generated" as const,
+    sql: "SELECT COUNT(*) FROM customers;",
+    retrieved_schema: ["customers.id"],
+    final_question: "How many customers do we have?",
+    pinned: false,
+    timestamp: Date.now(),
+  };
+
+  it("inserts the turn directly in sql_generated status — no asking state", () => {
+    const { result } = setup();
+
+    act(() => {
+      result.current.restoreTurn(restoredTurn);
+    });
+
+    expect(result.current.turns).toHaveLength(1);
+    expect(result.current.turns[0].status).toBe("sql_generated");
+  });
+
+  it("never sets status to 'asking' during restore", () => {
+    const { result } = setup();
+
+    act(() => {
+      result.current.restoreTurn(restoredTurn);
+    });
+
+    // 'asking' would cause the Thinking... bubble — must never appear
+    expect(result.current.turns[0].status).not.toBe("asking");
+  });
+
+  it("preserves the original turn id from history", () => {
+    const { result } = setup();
+
+    act(() => {
+      result.current.restoreTurn(restoredTurn);
+    });
+
+    expect(result.current.turns[0].id).toBe("history-abc");
+  });
+
+  it("isLoading is false after restore — no spinner shown", () => {
+    const { result } = setup();
+
+    act(() => {
+      result.current.restoreTurn(restoredTurn);
+    });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.loadingTurnId).toBeNull();
+  });
+
+  it("restores sql correctly", () => {
+    const { result } = setup();
+
+    act(() => {
+      result.current.restoreTurn(restoredTurn);
+    });
+
+    expect(result.current.turns[0].sql).toBe("SELECT COUNT(*) FROM customers;");
+  });
+
+  it("restores retrieved_schema correctly", () => {
+    const { result } = setup();
+
+    act(() => {
+      result.current.restoreTurn(restoredTurn);
+    });
+
+    expect(result.current.turns[0].retrieved_schema).toEqual(["customers.id"]);
+  });
+
+  it("replaces any existing turns — single restored turn", () => {
+    const { result } = setup();
+
+    // First ask a question normally
+    act(() => { result.current.startAsk("Some other question"); });
+    expect(result.current.turns).toHaveLength(1);
+
+    // Restore overwrites
+    act(() => { result.current.restoreTurn(restoredTurn); });
+    expect(result.current.turns).toHaveLength(1);
+    expect(result.current.turns[0].id).toBe("history-abc");
+  });
+
+  it("RESET after restore clears turns correctly", () => {
+    const { result } = setup();
+
+    act(() => { result.current.restoreTurn(restoredTurn); });
+    act(() => { result.current.resetConversation(); });
+
+    expect(result.current.turns).toHaveLength(0);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it("can restore again after reset — new conversation then history click", () => {
+    const { result } = setup();
+
+    act(() => { result.current.restoreTurn(restoredTurn); });
+    act(() => { result.current.resetConversation(); });
+    // Simulate: user clicks '+' then clicks a history item
+    act(() => { result.current.restoreTurn(restoredTurn); });
+
+    expect(result.current.turns).toHaveLength(1);
+    expect(result.current.turns[0].status).toBe("sql_generated");
+  });
+});
