@@ -346,7 +346,9 @@ def analyze_question(
                 "content": question
             }
         ],
-        temperature=0
+        temperature=0,
+        max_tokens=256,  # clarification response is a small JSON object
+        timeout=30.0,
     )
 
     response_text = response.choices[0].message.content

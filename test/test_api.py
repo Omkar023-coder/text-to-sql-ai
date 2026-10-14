@@ -6,7 +6,7 @@ Strategy:
   so they do not depend on live LLM calls or a running database.
 - One integration test confirms the API is correctly wired to
   the real pipeline by calling GET /health against the actual
-  SQLite database.
+  PostgreSQL database.
 """
 
 import pytest
@@ -28,7 +28,7 @@ class TestHealth:
     def test_health_returns_ok(self):
         """
         Integration test — uses the real database connection.
-        Confirms the API is wired to the actual SQLite engine.
+        Confirms the API is wired to the actual PostgreSQL engine.
         """
         response = client.get("/health")
         assert response.status_code == 200
@@ -311,7 +311,7 @@ class TestExecute:
     def test_execute_valid_select_returns_results(self):
         """
         Integration test — runs a real SELECT against the
-        actual SQLite database to confirm the API is correctly
+        actual PostgreSQL database to confirm the API is correctly
         wired to execute_query().
         """
         response = client.post(
@@ -387,7 +387,8 @@ class TestExecute:
     def test_execute_invalid_sql_produces_clean_error(self):
         """
         SQL that passes the validator but fails at execution
-        returns HTTP 500 with a clean error — no stack trace.
+        returns HTTP 500 with a clean error — no stack trace,
+        no driver internals, no generated SQL echoed back.
         """
         response = client.post(
             "/execute",
@@ -397,9 +398,21 @@ class TestExecute:
         assert response.status_code == 500
         data = response.json()
         assert "detail" in data
+
+        detail = data["detail"]
+
         # Must not expose raw traceback
         assert "traceback" not in str(data).lower()
-        assert "Traceback" not in data["detail"]
+        assert "Traceback" not in detail
+
+        # Must not expose database driver / internal details
+        assert "psycopg2" not in detail.lower()
+        assert "[SQL:" not in detail
+        assert "sqlalchemy" not in detail.lower()
+        assert "postgresql" not in detail.lower()
+
+        # Must be a non-empty, client-safe message
+        assert len(detail) > 0
 
     def test_execute_rejection_includes_reason(self):
         """400 response from validate_sql includes the rejection reason."""
@@ -426,3 +439,238 @@ class TestExecute:
         if data["status"] == "success":
             assert "name" in data["columns"]
             assert "email" in data["columns"]
+
+    def test_execute_error_does_not_expose_driver_details(self):
+        """
+        500 responses must never contain psycopg2, [SQL:, or
+        sqlalchemy — these would reveal internal implementation.
+        """
+        with patch(
+            "backend.main.execute_query",
+            side_effect=RuntimeError(
+                "(psycopg2.errors.UndefinedTable) relation 'x' "
+                "does not exist [SQL: SELECT * FROM x]"
+            )
+        ):
+            response = client.post(
+                "/execute",
+                json={"sql": "SELECT * FROM customers"}
+            )
+
+        assert response.status_code == 500
+        detail = response.json()["detail"]
+        assert "psycopg2" not in detail.lower()
+        assert "[SQL:" not in detail
+        assert "sqlalchemy" not in detail.lower()
+        # Must still be a non-empty, client-safe message
+        assert len(detail) > 0
+
+    def test_execute_row_limit_is_applied(self):
+        """
+        execute_query() caps results at MAX_ROWS.
+        Tested without inserting real data by mocking the
+        database response.
+        """
+        from backend.database.executor import MAX_ROWS
+        from unittest.mock import patch, MagicMock
+
+        # Build a fake result with MAX_ROWS + 10 rows
+        oversized_rows = [[i] for i in range(MAX_ROWS + 10)]
+
+        mock_result = MagicMock()
+        mock_result.fetchmany.return_value = oversized_rows[:MAX_ROWS]
+        mock_result.keys.return_value = ["id"]
+
+        with patch("backend.database.executor.engine") as mock_engine:
+            mock_conn = MagicMock()
+            mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+            mock_conn.__exit__ = MagicMock(return_value=False)
+            mock_conn.execute.return_value = mock_result
+            mock_engine.connect.return_value = mock_conn
+
+            from backend.database.executor import execute_query
+            result = execute_query("SELECT id FROM customers")
+
+        assert len(result["rows"]) == MAX_ROWS
+        mock_result.fetchmany.assert_called_once_with(MAX_ROWS)
+
+
+# ============================================================
+# Security audit regression tests
+# ============================================================
+
+class TestCORSHeaders:
+    """CORS middleware must be present and return correct headers."""
+
+    def test_cors_header_returned_for_allowed_origin(self):
+        """
+        A request from localhost:5173 (the default allowed origin)
+        must receive an Access-Control-Allow-Origin header.
+        """
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        # 200 or 204 — CORS pre-flight succeeds
+        assert response.status_code in (200, 204)
+        assert "access-control-allow-origin" in response.headers
+
+    def test_cors_allow_origin_is_not_wildcard(self):
+        """
+        The allowed origin must never be '*' — wildcard with
+        credentials is a browser security violation.
+        """
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        origin = response.headers.get("access-control-allow-origin", "")
+        assert origin != "*", (
+            "CORS allow_origin must not be '*'. "
+            "Use an explicit origin list."
+        )
+
+
+class TestInputLengthLimits:
+    """Request fields must be rejected when they exceed max_length."""
+
+    def test_ask_question_too_long_is_rejected(self):
+        """question > 1000 chars must be rejected with 422."""
+        long_question = "how many customers " * 60  # > 1000 chars
+        response = client.post("/ask", json={"question": long_question})
+        assert response.status_code == 422
+
+    def test_clarify_original_question_too_long_is_rejected(self):
+        """original_question > 1000 chars must be rejected with 422."""
+        long_q = "what is the total " * 60
+        response = client.post(
+            "/clarify",
+            json={"original_question": long_q, "user_answer": "revenue"},
+        )
+        assert response.status_code == 422
+
+    def test_clarify_user_answer_too_long_is_rejected(self):
+        """user_answer > 500 chars must be rejected with 422."""
+        long_a = "highest revenue " * 40  # > 500 chars
+        response = client.post(
+            "/clarify",
+            json={
+                "original_question": "Show me the best customer.",
+                "user_answer": long_a,
+            },
+        )
+        assert response.status_code == 422
+
+    def test_execute_sql_too_long_is_rejected(self):
+        """sql > 4000 chars must be rejected with 422."""
+        long_sql = "SELECT 1 -- " + "x" * 4100
+        response = client.post("/execute", json={"sql": long_sql})
+        assert response.status_code == 422
+
+    def test_ask_question_at_limit_is_accepted(self):
+        """A question at exactly 1000 chars must not be rejected for length."""
+        from unittest.mock import patch
+        prefix = "how many customers do we have in "
+        q = prefix + "x" * (1000 - len(prefix))
+        assert len(q) == 1000
+        mock_result = {
+            "status": "sql_generated",
+            "question": q,
+            "sql": "SELECT COUNT(*) FROM customers",
+            "retrieved_schema": [],
+        }
+        with patch("backend.main.process_question", return_value=mock_result):
+            response = client.post("/ask", json={"question": q})
+        assert response.status_code != 422 or "too long" not in str(
+            response.json()
+        ).lower()
+
+
+class TestClarifySanitisedErrors:
+    """
+    /clarify must not expose raw ValueError messages to the client
+    (audit finding F5).
+    """
+
+    def test_clarify_value_error_returns_generic_message(self):
+        """
+        A ValueError raised by the pipeline must not reach the
+        client verbatim — it must be replaced with a safe message.
+        """
+        with patch(
+            "backend.main.process_clarified_question",
+            side_effect=ValueError(
+                "Internal clarification resolver state: "
+                "openai._models.CompletionChoice unexpected"
+            ),
+        ):
+            response = client.post(
+                "/clarify",
+                json={
+                    "original_question": "Show me the best customer.",
+                    "user_answer": "Highest revenue.",
+                },
+            )
+
+        assert response.status_code == 422
+        detail = response.json().get("detail", "")
+
+        # Must not expose the raw internal message
+        assert "openai" not in detail.lower()
+        assert "CompletionChoice" not in detail
+        assert "Internal clarification" not in detail
+
+        # Must be a non-empty, user-friendly message
+        assert len(detail) > 0
+
+    def test_clarify_unexpected_error_still_returns_500(self):
+        """Non-ValueError exceptions from the pipeline return 500."""
+        with patch(
+            "backend.main.process_clarified_question",
+            side_effect=RuntimeError("unexpected failure"),
+        ):
+            response = client.post(
+                "/clarify",
+                json={
+                    "original_question": "Show me the best customer.",
+                    "user_answer": "Highest revenue.",
+                },
+            )
+        assert response.status_code == 500
+        assert "traceback" not in str(response.json()).lower()
+
+
+class TestSqlValidatorNewBlocks:
+    """
+    Confirm that the API rejects pg_sleep, set_config, and
+    generate_series at the /execute endpoint.
+    """
+
+    def test_execute_rejects_pg_sleep(self):
+        response = client.post(
+            "/execute", json={"sql": "SELECT pg_sleep(10)"}
+        )
+        assert response.status_code == 400
+        assert "pg_sleep" in response.json().get("detail", "").lower()
+
+    def test_execute_rejects_set_config(self):
+        response = client.post(
+            "/execute",
+            json={"sql": "SELECT set_config('statement_timeout','0',false)"},
+        )
+        assert response.status_code == 400
+        assert "set_config" in response.json().get("detail", "").lower()
+
+    def test_execute_rejects_generate_series(self):
+        response = client.post(
+            "/execute",
+            json={"sql": "SELECT * FROM generate_series(1, 1000000)"},
+        )
+        assert response.status_code == 400
+        assert "generate_series" in response.json().get("detail", "").lower()

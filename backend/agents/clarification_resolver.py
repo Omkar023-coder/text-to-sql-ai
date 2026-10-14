@@ -122,7 +122,9 @@ def resolve_clarification(
             }
         ],
 
-        temperature=0
+        temperature=0,
+        max_tokens=256,  # resolved question is one sentence
+        timeout=30.0,
     )
 
     final_question = (

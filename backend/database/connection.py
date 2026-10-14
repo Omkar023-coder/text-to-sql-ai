@@ -1,30 +1,48 @@
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
+
 # ============================================================
-# Database path — anchored to this file, not to CWD
+# Load environment variables
 #
-# Old (CWD-relative):
-#   DATABASE_URL = "sqlite:///./text_to_sql.db"
-#
-#   This resolved relative to whatever directory uvicorn was
-#   started from.  Starting from backend/ would silently
-#   create a second, empty database.
-#
-# New (file-relative):
-#   __file__ is always backend/database/connection.py.
-#   .parents[2] is always the project root.
-#   The database file is always at <project_root>/text_to_sql.db,
-#   regardless of the current working directory.
+# Anchored to this file so the .env is found regardless of
+# which directory uvicorn is started from.
 # ============================================================
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DB_PATH = _PROJECT_ROOT / "text_to_sql.db"
+_BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(_BASE_DIR / ".env")
 
-DATABASE_URL = f"sqlite:///{_DB_PATH}"
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False}
-)
+# ============================================================
+# Database URL
+#
+# Read from environment — never hardcoded.
+# Set DATABASE_URL in your .env file:
+#
+#   DATABASE_URL=postgresql://user:password@localhost:5432/text_to_sql_ai
+#
+# See .env.example for the full format and cloud examples.
+# ============================================================
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL is not set. "
+        "Add it to your .env file. "
+        "See .env.example for the required format."
+    )
+
+
+# ============================================================
+# SQLAlchemy Engine
+#
+# connect_args is intentionally omitted — it was only needed
+# for SQLite's check_same_thread restriction, which does not
+# apply to PostgreSQL.
+# ============================================================
+
+engine = create_engine(DATABASE_URL)

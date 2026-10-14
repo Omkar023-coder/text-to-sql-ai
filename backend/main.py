@@ -1,9 +1,15 @@
+import logging
+import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from backend.agents.orchestrator import (
     process_question,
@@ -18,6 +24,9 @@ from backend.database.connection import engine
 from sqlalchemy import text
 
 
+log = logging.getLogger(__name__)
+
+
 # ============================================================
 # Paths
 # ============================================================
@@ -26,6 +35,28 @@ from sqlalchemy import text
 # from any working directory without breaking static serving.
 _THIS_DIR = Path(__file__).resolve().parent
 _FRONTEND_DIST = _THIS_DIR.parent / "frontend" / "dist"
+
+
+# ============================================================
+# Rate limiting
+#
+# Limits are read from environment variables so they can be
+# tuned per deployment without code changes.
+#
+# Defaults:
+#   RATE_LIMIT_ASK      = 20/minute   (LLM call — expensive)
+#   RATE_LIMIT_CLARIFY  = 20/minute   (LLM call — expensive)
+#   RATE_LIMIT_EXECUTE  = 60/minute   (DB query — cheaper)
+#
+# Set to "0/minute" to disable in development if needed.
+# The limiter uses the client IP address as the key.
+# ============================================================
+
+_RATE_ASK     = os.getenv("RATE_LIMIT_ASK",     "20/minute")
+_RATE_CLARIFY = os.getenv("RATE_LIMIT_CLARIFY",  "20/minute")
+_RATE_EXECUTE = os.getenv("RATE_LIMIT_EXECUTE",  "60/minute")
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ============================================================
@@ -38,9 +69,49 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Attach rate-limit error handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ============================================================
+# CORS
+#
+# CORS_ORIGINS is read from the environment so the allowed list
+# can be configured per deployment without code changes.
+#
+# Development default: http://localhost:5173 (Vite dev server).
+# Production: set CORS_ORIGINS to the exact deployed domain(s),
+# comma-separated, e.g.:
+#   CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+#
+# Wildcard ("*") with allow_credentials=True is intentionally
+# not used — that combination is rejected by browsers and is
+# a security misconfiguration.
+# ============================================================
+
+_raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173")
+_ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+    allow_credentials=False,
+)
+
 
 # ============================================================
 # Request Models
+#
+# max_length values are sized to be generous for legitimate
+# use while blocking oversized inputs that would burn LLM
+# tokens or cause slow regex scans in the SQL validator.
+#
+#   question      1 000 chars  — natural language question
+#   user_answer     500 chars  — clarification answer
+#   sql           4 000 chars  — generated or edited SQL
 # ============================================================
 
 class AskRequest(BaseModel):
@@ -52,7 +123,7 @@ class AskRequest(BaseModel):
         }
     }
 
-    question: str
+    question: str = Field(..., max_length=1000)
 
     @field_validator("question")
     @classmethod
@@ -64,7 +135,6 @@ class AskRequest(BaseModel):
                 "question must not be empty or whitespace."
             )
 
-        # Reject obvious placeholder values from Swagger/OpenAPI
         PLACEHOLDERS = {"string", "str", "text", "query", "input", "<string>"}
         if stripped.lower() in PLACEHOLDERS:
             raise ValueError(
@@ -72,8 +142,6 @@ class AskRequest(BaseModel):
                 "for example: 'How many customers do we have?'"
             )
 
-        # Reject single-word inputs — questions need at least
-        # two tokens to form a meaningful database query
         if len(stripped.split()) < 2:
             raise ValueError(
                 "question is too short. Please provide a complete "
@@ -96,8 +164,8 @@ class ClarifyRequest(BaseModel):
         }
     }
 
-    original_question: str
-    user_answer: str
+    original_question: str = Field(..., max_length=1000)
+    user_answer: str = Field(..., max_length=500)
 
     @field_validator("original_question")
     @classmethod
@@ -123,7 +191,7 @@ class ExecuteRequest(BaseModel):
         }
     }
 
-    sql: str
+    sql: str = Field(..., max_length=4000)
 
     @field_validator("sql")
     @classmethod
@@ -138,7 +206,8 @@ class ExecuteRequest(BaseModel):
 # ============================================================
 
 @app.post("/ask")
-def ask(request: AskRequest):
+@limiter.limit(_RATE_ASK)
+def ask(request: Request, body: AskRequest):
     """
     Submit a natural-language question.
 
@@ -151,11 +220,9 @@ def ask(request: AskRequest):
     """
 
     try:
-        result = process_question(request.question)
+        result = process_question(body.question)
 
     except ValueError as error:
-        # Return the validation message but never expose
-        # internal pipeline implementation details
         message = str(error)
         if "clarification requires" in message.lower():
             message = (
@@ -178,7 +245,8 @@ def ask(request: AskRequest):
 # ============================================================
 
 @app.post("/clarify")
-def clarify(request: ClarifyRequest):
+@limiter.limit(_RATE_CLARIFY)
+def clarify(request: Request, body: ClarifyRequest):
     """
     Submit a clarification answer to resolve an ambiguous question.
 
@@ -189,12 +257,19 @@ def clarify(request: ClarifyRequest):
 
     try:
         result = process_clarified_question(
-            request.original_question,
-            request.user_answer
+            body.original_question,
+            body.user_answer
         )
 
     except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error))
+        # Sanitise: never expose raw internal error messages.
+        # The pipeline may raise ValueError with implementation
+        # details; replace with a safe generic message.
+        log.warning("Clarify pipeline ValueError: %s", error, exc_info=False)
+        raise HTTPException(
+            status_code=422,
+            detail="Could not process the clarification. Please try again."
+        )
 
     except Exception as error:
         raise HTTPException(
@@ -210,25 +285,29 @@ def clarify(request: ClarifyRequest):
 # ============================================================
 
 @app.post("/execute")
-def execute(request: ExecuteRequest):
+@limiter.limit(_RATE_EXECUTE)
+def execute(request: Request, body: ExecuteRequest):
     """
     Execute a SQL SELECT query against the database.
 
     Security boundary:
         1. SQL is validated by validate_sql() before execution.
         2. Only SELECT queries are allowed.
-        3. Dangerous keywords are rejected.
+        3. Dangerous keywords and privileged functions are rejected.
+           Includes pg_sleep, set_config, generate_series.
         4. Multiple statements are rejected.
 
-    Database errors are caught and returned as clean error
-    responses — no stack traces are exposed.
+    Database errors are logged server-side and returned as a
+    generic client-safe message — raw exception text, driver
+    names, connection details, and generated SQL are never
+    exposed to the client.
     """
 
     # --------------------------------------------------------
     # Step 1: Validate SQL
     # --------------------------------------------------------
 
-    is_valid, reason = validate_sql(request.sql)
+    is_valid, reason = validate_sql(body.sql)
 
     if not is_valid:
         raise HTTPException(
@@ -241,12 +320,13 @@ def execute(request: ExecuteRequest):
     # --------------------------------------------------------
 
     try:
-        result = execute_query(request.sql)
+        result = execute_query(body.sql)
 
     except Exception as error:
+        log.error("Query execution error: %s", error, exc_info=False)
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail="Query execution failed. Check your SQL and try again."
         )
 
     return {
@@ -268,10 +348,6 @@ def health():
     Performs a lightweight SELECT 1 against the database
     to confirm the connection is live.
     """
-
-    # --------------------------------------------------------
-    # Check database connectivity
-    # --------------------------------------------------------
 
     db_status = "connected"
 
@@ -306,7 +382,6 @@ def schema():
 
     documents = get_all_documents()
 
-    # Group columns by table
     tables: dict[str, list[dict]] = {}
 
     for doc in documents:
@@ -343,7 +418,6 @@ def schema():
 
 if _FRONTEND_DIST.exists():
 
-    # Serve hashed JS/CSS assets under /assets/
     app.mount(
         "/assets",
         StaticFiles(directory=str(_FRONTEND_DIST / "assets")),

@@ -252,7 +252,11 @@ SCHEMA_DOCUMENTS = [
             "product order",
             "products ordered",
             "items ordered",
-            "purchased products"
+            "purchased products",
+            "order with product name",
+            "order with product price",
+            "orders and their products",
+            "orders joined with products"
         ],
         "metadata": {
             "domain": "order",
@@ -346,7 +350,12 @@ SCHEMA_DOCUMENTS = [
             "customer spend",
             "amount spent",
             "money spent",
-            "purchase amount"
+            "purchase amount",
+            "order price",
+            "price of order",
+            "how much an order costs",
+            "order cost",
+            "price paid"
         ],
         "metadata": {
             "domain": "order",
