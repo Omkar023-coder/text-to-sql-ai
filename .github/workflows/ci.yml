@@ -1,4 +1,3 @@
-
 name: Text-to-SQL AI CI
 
 on:
@@ -10,6 +9,47 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # ── PostgreSQL service container ──────────────────────────
+    # Required by tests that make real database connections:
+    #   test_api.py (health + execute integration tests)
+    #   test_setup.py (schema introspection)
+    #   test_sql_generation.py (live LEFT JOIN fixture tests)
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ci_user
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: text_to_sql_ai_test
+        # Health check so the runner waits until PG is ready
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    # ── Environment variables ──────────────────────────────────
+    # GROQ_API_KEY: a non-empty dummy value satisfies the
+    # module-level guard in sql_generator.py, clarification.py,
+    # and clarification_resolver.py.  All tests that import
+    # these modules mock the actual Groq client — no real API
+    # calls are made during the test suite.
+    #
+    # DATABASE_URL: points to the service container above.
+    # CORS_ORIGINS: matches the application default.
+    #
+    # Real secrets (actual Groq keys, production DB passwords)
+    # must NEVER appear in this file.  They belong in
+    # GitHub repository Settings → Secrets and variables →
+    # Actions.  This CI workflow intentionally uses only
+    # disposable test credentials.
+    env:
+      GROQ_API_KEY: ci_dummy_groq_key_not_used_in_tests
+      DATABASE_URL: postgresql://ci_user:ci_password@localhost:5432/text_to_sql_ai_test
+      CORS_ORIGINS: http://localhost:5173
 
     steps:
       - name: Checkout repository
@@ -30,6 +70,9 @@ jobs:
       - name: Install project dependencies
         run: python -m pip install -r requirements.txt
 
+      - name: Check dependencies
+        run: python -m pip check
+
       - name: Cache Hugging Face models
         uses: actions/cache@v4
         with:
@@ -37,11 +80,22 @@ jobs:
           key: huggingface-all-MiniLM-L6-v2-v1
 
       - name: Download embedding model
+        # Downloads all-MiniLM-L6-v2 if not already cached.
+        # Must run before tests because semantic_search.py
+        # loads the model at import time.
         run: |
-          python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+          python -c "
+          from sentence_transformers import SentenceTransformer
+          SentenceTransformer('all-MiniLM-L6-v2')
+          print('Model ready.')
+          "
 
-      - name: Check dependencies
-        run: python -m pip check
+      - name: Initialise test database
+        # Creates tables and seeds the test data that integration
+        # tests depend on (customers, products, orders).
+        # Runs after PostgreSQL is confirmed healthy (service
+        # health check above ensures the container is ready).
+        run: python -m backend.database.setup
 
       - name: Run tests
-        run: python -m pytest --tb=no -q
+        run: python -m pytest --tb=short -q
