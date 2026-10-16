@@ -272,63 +272,85 @@ def parse_clarification_response(response_text: str) -> dict:
             "suggestions": []
         }
 
-    required_fields = [
-        "needs_clarification",
-        "clarification_question",
-        "suggestions"
-    ]
+    # Validate and normalize the parsed JSON
+    # If any field is missing or has the wrong type, return a safe fallback
+    # rather than raising ValueError which would surface to the user.
 
-    for field in required_fields:
-
-        if field not in result:
-            raise ValueError(
-                f"Missing field in clarification response: {field}"
-            )
-
-    # Validate needs_clarification
-    if not isinstance(
-        result["needs_clarification"],
-        bool
-    ):
-        raise ValueError(
-            "'needs_clarification' must be a boolean."
+    if not isinstance(result, dict):
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification response is not a dict; treating as clear. "
+            "type=%s, raw=%r",
+            type(result).__name__,
+            response_text[:200] if response_text else "",
         )
+        return {
+            "needs_clarification": False,
+            "clarification_question": "",
+            "suggestions": []
+        }
 
-    # Validate clarification question
-    if not isinstance(
-        result["clarification_question"],
-        str
-    ):
-        raise ValueError(
-            "'clarification_question' must be a string."
+    # Extract needs_clarification with safe fallback
+    needs_clarification = result.get("needs_clarification")
+    if not isinstance(needs_clarification, bool):
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification 'needs_clarification' is not bool; treating as clear. "
+            "value=%r, raw=%r",
+            needs_clarification,
+            response_text[:200] if response_text else "",
         )
+        return {
+            "needs_clarification": False,
+            "clarification_question": "",
+            "suggestions": []
+        }
 
-    # Validate suggestions
-    if not isinstance(
-        result["suggestions"],
-        list
-    ):
-        raise ValueError(
-            "'suggestions' must be a list."
+    # Extract clarification_question with safe fallback
+    clarification_question = result.get("clarification_question", "")
+    if not isinstance(clarification_question, str):
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification 'clarification_question' is not str; coercing. "
+            "value=%r",
+            clarification_question,
         )
+        clarification_question = str(clarification_question) if clarification_question else ""
 
-    # If clarification is required,
-    # there should be suggestions.
-    if result["needs_clarification"]:
+    # Extract suggestions with safe fallback
+    suggestions = result.get("suggestions", [])
+    if not isinstance(suggestions, list):
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification 'suggestions' is not list; treating as empty. "
+            "value=%r",
+            suggestions,
+        )
+        suggestions = []
 
-        if len(result["suggestions"]) == 0:
-            raise ValueError(
-                "Clarification requires at least one suggestion."
-            )
+    # If clarification is required but there are no suggestions,
+    # log a warning but allow it (don't crash the request)
+    if needs_clarification and len(suggestions) == 0:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification required but no suggestions provided; "
+            "adding generic suggestions."
+        )
+        suggestions = [
+            "Try being more specific about what you want to see.",
+            "Mention which column or metric you are interested in."
+        ]
 
-    # If clarification isn't required,
-    # keep the response clean.
-    else:
+    # If clarification isn't required, keep the response clean
+    if not needs_clarification:
+        clarification_question = ""
+        suggestions = []
 
-        result["clarification_question"] = ""
-        result["suggestions"] = []
-
-    return result
+    return {
+        "needs_clarification": needs_clarification,
+        "clarification_question": clarification_question,
+        "suggestions": suggestions
+    }
 
 
 # ============================================================
@@ -394,5 +416,17 @@ def analyze_question(
     )
 
     response_text = response.choices[0].message.content
+    finish_reason = response.choices[0].finish_reason
+
+    # Log if the response was truncated due to max_tokens
+    if finish_reason == "length":
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification response truncated (finish_reason='length'). "
+            "Consider increasing max_tokens. "
+            "question=%r, response_length=%d",
+            question[:100],
+            len(response_text) if response_text else 0,
+        )
 
     return parse_clarification_response(response_text)

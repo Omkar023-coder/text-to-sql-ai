@@ -178,18 +178,23 @@ def test_none_like_response_returns_fallback():
 # parse_clarification_response — structural errors still raise
 # ============================================================
 
-def test_missing_field_raises():
-    """JSON with missing required field still raises ValueError."""
-
+def test_missing_field_returns_safe_fallback():
+    """
+    JSON with missing required field returns safe fallback with
+    generic suggestions rather than raising ValueError.
+    """
     response = '{"needs_clarification": false}'
+    result = parse_clarification_response(response)
+    # Should not raise; should return a valid response
+    assert "needs_clarification" in result
+    assert isinstance(result["needs_clarification"], bool)
 
-    with pytest.raises(ValueError):
-        parse_clarification_response(response)
 
-
-def test_invalid_boolean_raises():
-    """String instead of bool for needs_clarification raises ValueError."""
-
+def test_invalid_boolean_returns_safe_fallback():
+    """
+    String instead of bool for needs_clarification returns safe
+    fallback (treating as clear) rather than raising ValueError.
+    """
     response = """
     {
         "needs_clarification": "true",
@@ -197,14 +202,16 @@ def test_invalid_boolean_raises():
         "suggestions": ["Option 1"]
     }
     """
+    result = parse_clarification_response(response)
+    # Should not raise; should treat as clear
+    assert result["needs_clarification"] is False
 
-    with pytest.raises(ValueError):
-        parse_clarification_response(response)
 
-
-def test_ambiguous_with_no_suggestions_raises():
-    """needs_clarification=true but empty suggestions raises ValueError."""
-
+def test_ambiguous_with_no_suggestions_adds_generic_suggestions():
+    """
+    needs_clarification=true but empty suggestions adds generic
+    suggestions rather than raising ValueError.
+    """
     response = """
     {
         "needs_clarification": true,
@@ -212,6 +219,7 @@ def test_ambiguous_with_no_suggestions_raises():
         "suggestions": []
     }
     """
-
-    with pytest.raises(ValueError):
-        parse_clarification_response(response)
+    result = parse_clarification_response(response)
+    # Should not raise; should add generic suggestions
+    assert result["needs_clarification"] is True
+    assert len(result["suggestions"]) >= 1

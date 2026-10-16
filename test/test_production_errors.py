@@ -104,6 +104,44 @@ class TestParseClarificationResponse:
         result = parse_clarification_response("   ")
         assert "needs_clarification" in result
 
+    def test_missing_field_returns_fallback_with_generic_suggestions(self):
+        """
+        If the LLM returns valid JSON but missing a required field,
+        return a safe fallback rather than raising ValueError.
+        """
+        incomplete = '{"needs_clarification": true}'
+        result = parse_clarification_response(incomplete)
+        # Should still work, with generic suggestions added
+        assert result["needs_clarification"] is True
+        assert len(result["suggestions"]) >= 1
+
+    def test_wrong_type_for_needs_clarification_returns_fallback(self):
+        """
+        If needs_clarification is a string instead of bool,
+        return safe fallback.
+        """
+        wrong_type = '{"needs_clarification": "yes", "clarification_question": "", "suggestions": []}'
+        result = parse_clarification_response(wrong_type)
+        # Should not raise; treat as clear
+        assert result["needs_clarification"] is False
+
+    def test_wrong_type_for_suggestions_returns_fallback(self):
+        """
+        If suggestions is not a list, return safe fallback.
+        """
+        wrong_type = '{"needs_clarification": false, "clarification_question": "", "suggestions": "none"}'
+        result = parse_clarification_response(wrong_type)
+        assert result["needs_clarification"] is False
+        assert isinstance(result["suggestions"], list)
+
+    def test_list_instead_of_dict_returns_fallback(self):
+        """
+        If the LLM returns a list instead of a dict, return safe fallback.
+        """
+        not_dict = '[{"needs_clarification": false}]'
+        result = parse_clarification_response(not_dict)
+        assert result["needs_clarification"] is False
+
 
 # ============================================================
 # generate_sql — non-SELECT response handling
