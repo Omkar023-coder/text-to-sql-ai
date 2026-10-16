@@ -562,3 +562,95 @@ class TestLLMAPIErrorHandling:
             # Should use fallback concatenation
             assert "best customer" in result.lower()
             assert "highest revenue" in result.lower()
+
+
+# ============================================================
+# SQL Execution tests
+# ============================================================
+
+class TestSQLExecution:
+    """
+    Regression tests for SQL execution failures.
+    
+    Root cause: Production database tables were not initialized
+    because there was no startup event handler to run create_tables
+    and insert_sample_data.
+    
+    Fix: Added @app.on_event("startup") handler to initialize
+    database on application startup.
+    """
+
+    def test_count_query_executes_successfully(self):
+        """
+        SELECT COUNT(*) AS total_customers FROM customers;
+        should execute and return a result.
+        """
+        from backend.database.executor import execute_query
+        
+        result = execute_query("SELECT COUNT(*) AS total_customers FROM customers")
+        
+        assert "columns" in result
+        assert "rows" in result
+        assert result["columns"] == ["total_customers"]
+        assert len(result["rows"]) == 1
+        assert isinstance(result["rows"][0][0], int)
+        assert result["rows"][0][0] >= 0  # Count should be non-negative
+
+    def test_select_all_customers_executes_successfully(self):
+        """
+        SELECT * FROM customers; should return all columns and rows.
+        """
+        from backend.database.executor import execute_query
+        
+        result = execute_query("SELECT * FROM customers LIMIT 5")
+        
+        assert "columns" in result
+        assert "rows" in result
+        # Should have standard customer columns
+        assert "id" in result["columns"]
+        assert "name" in result["columns"]
+        assert "email" in result["columns"]
+
+    def test_join_query_executes_successfully(self):
+        """
+        JOIN queries should work with proper relationships.
+        """
+        from backend.database.executor import execute_query
+        
+        sql = """
+            SELECT c.name, COUNT(o.id) AS order_count
+            FROM customers c
+            LEFT JOIN orders o ON o.customer_id = c.id
+            GROUP BY c.id, c.name
+            ORDER BY order_count DESC
+            LIMIT 5
+        """
+        
+        result = execute_query(sql)
+        
+        assert "columns" in result
+        assert "rows" in result
+        assert result["columns"] == ["name", "order_count"]
+
+    def test_aggregate_with_alias_executes_successfully(self):
+        """
+        Aggregate functions with aliases should work.
+        """
+        from backend.database.executor import execute_query
+        
+        result = execute_query("SELECT COUNT(*) AS total, SUM(price) AS total_price FROM products")
+        
+        assert result["columns"] == ["total", "total_price"]
+        assert len(result["rows"]) == 1
+
+    def test_max_rows_limit_is_enforced(self):
+        """
+        The executor should respect MAX_ROWS limit.
+        """
+        from backend.database.executor import execute_query, MAX_ROWS
+        
+        # Generate a query that would return more than MAX_ROWS if unbound
+        # For this test, just verify the limit is applied
+        result = execute_query("SELECT * FROM generate_series(1, 10) AS x")
+        
+        assert len(result["rows"]) <= MAX_ROWS

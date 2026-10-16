@@ -20,6 +20,7 @@ from backend.rag.schema_data import get_all_documents
 from backend.security.sql_validator import validate_sql
 from backend.database.executor import execute_query
 from backend.database.connection import engine
+from backend.database.setup import create_tables, insert_sample_data
 
 from sqlalchemy import text
 
@@ -72,6 +73,33 @@ app = FastAPI(
 # Attach rate-limit error handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ============================================================
+# Startup: Initialize database
+#
+# On application startup, ensure tables exist and seed data
+# is present. This is idempotent and safe to run on every
+# deploy:
+#   - CREATE TABLE IF NOT EXISTS is a no-op if table exists
+#   - INSERT ... ON CONFLICT DO NOTHING skips existing rows
+# ============================================================
+
+@app.on_event("startup")
+def initialize_database():
+    """
+    Create tables and seed sample data on application startup.
+    Idempotent — safe to run repeatedly.
+    """
+    log.info("Initializing database...")
+    try:
+        create_tables()
+        insert_sample_data()
+        log.info("Database initialization complete.")
+    except Exception as error:
+        log.error("Database initialization failed: %s", error, exc_info=True)
+        # Don't crash the app — allow it to start even if DB setup fails
+        # (e.g., for health checks or debugging)
 
 
 # ============================================================
@@ -323,7 +351,13 @@ def execute(request: Request, body: ExecuteRequest):
         result = execute_query(body.sql)
 
     except Exception as error:
-        log.error("Query execution error: %s", error, exc_info=False)
+        # Log the full exception with traceback for debugging
+        log.error(
+            "Query execution error: %s. SQL: %r",
+            error,
+            body.sql[:200],  # Truncate for log safety
+            exc_info=True    # Include full traceback
+        )
         raise HTTPException(
             status_code=500,
             detail="Query execution failed. Check your SQL and try again."
