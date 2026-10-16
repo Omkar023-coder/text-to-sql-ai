@@ -378,15 +378,15 @@ class TestClarificationRoutingProduction:
     Regression tests for the production issue where simple
     questions like "Show me the first 5 customers." were
     incorrectly marked as needing clarification.
-    
+
     Root cause: RAG was retrieving orders table columns
     even for pure customer questions, making the schema
     context ambiguous.
-    
+
     Fix: Improved RAG scoring to boost single-table queries
     and penalize cross-table results when there's no
     relationship signal in the question.
-    
+
     These tests mock LLM responses to avoid real API calls.
     """
 
@@ -397,27 +397,27 @@ class TestClarificationRoutingProduction:
         """
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         # Mock clarification to return "clear" (no clarification needed)
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         # Mock SQL generator to return valid SQL
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT * FROM customers ORDER BY id LIMIT 5"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("Show me the first 5 customers.")
-                
+
         assert result["status"] == "sql_generated"
         assert "sql" in result
         assert result["sql"].upper().startswith("SELECT")
@@ -426,75 +426,75 @@ class TestClarificationRoutingProduction:
         """'List all products.' should not require clarification."""
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT * FROM products"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("List all products.")
-                
+
         assert result["status"] == "sql_generated"
 
     def test_get_all_orders_no_clarification(self):
         """'Get all orders.' should not require clarification."""
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT * FROM orders"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("Get all orders.")
-                
+
         assert result["status"] == "sql_generated"
 
     def test_how_many_customers_no_clarification(self):
         """'How many customers do we have?' should not require clarification."""
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT COUNT(*) FROM customers"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("How many customers do we have?")
-                
+
         assert result["status"] == "sql_generated"
 
     def test_best_customer_requires_clarification(self):
@@ -504,7 +504,7 @@ class TestClarificationRoutingProduction:
         """
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         # Mock clarification to return "needs clarification"
         clarification_choice = MagicMock()
         clarification_choice.message.content = '''{
@@ -518,12 +518,12 @@ class TestClarificationRoutingProduction:
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             mock_clarif_client.chat.completions.create.return_value = clarification_response
-            
+
             result = process_question("Show me the best customer.")
-            
+
         assert result["status"] == "clarification_required"
         assert "clarification_question" in result
         assert len(result["suggestions"]) > 0
@@ -532,7 +532,7 @@ class TestClarificationRoutingProduction:
         """'Show me the top customers.' is ambiguous without a metric."""
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         clarification_choice = MagicMock()
         clarification_choice.message.content = '''{
             "needs_clarification": true,
@@ -545,12 +545,12 @@ class TestClarificationRoutingProduction:
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             mock_clarif_client.chat.completions.create.return_value = clarification_response
-            
+
             result = process_question("Show me the top customers.")
-            
+
         assert result["status"] == "clarification_required"
 
     def test_most_expensive_products_no_clarification(self):
@@ -560,25 +560,25 @@ class TestClarificationRoutingProduction:
         """
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT * FROM products ORDER BY price DESC"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("Show me the most expensive products.")
-                
+
         assert result["status"] == "sql_generated"
 
 
@@ -591,7 +591,7 @@ class TestClarificationRoutingIntegration:
     Optional integration tests that make real LLM API calls.
     These tests are skipped when GROQ_API_KEY is not configured
     or is a dummy value.
-    
+
     Run these locally with: pytest -k Integration
     """
 
@@ -613,9 +613,9 @@ class TestClarificationRoutingIntegration:
         import pytest
         if not self._has_valid_groq_key():
             pytest.skip("Requires valid GROQ_API_KEY for integration testing")
-        
+
         from backend.agents.orchestrator import process_question
-        
+
         try:
             result = process_question("Show me customer revenue.")
             assert result["status"] in ["sql_generated", "clarification_required"]
@@ -647,9 +647,9 @@ class TestLLMAPIErrorHandling:
         with patch("backend.agents.clarification.client") as mock_client:
             # Simulate API authentication error
             mock_client.chat.completions.create.side_effect = Exception("API Error: 401 Unauthorized")
-            
+
             result = analyze_question("Show me the first 5 customers.", schema_context="...")
-            
+
             # Should not raise; should return clear so SQL generation proceeds
             assert result["needs_clarification"] is False
 
@@ -665,7 +665,7 @@ class TestLLMAPIErrorHandling:
 
         with patch("backend.agents.clarification_resolver.client") as mock_client:
             mock_client.chat.completions.create.side_effect = Exception("API Error: 401 Unauthorized")
-            
+
             with pytest.raises(ValueError, match="LLM service error"):
                 resolve_clarification("Show me the best customer.", "Highest revenue")
 
@@ -680,7 +680,7 @@ class TestLLMAPIErrorHandling:
 
         with patch("backend.agents.sql_generator.client") as mock_client:
             mock_client.chat.completions.create.side_effect = Exception("API Error: 401 Unauthorized")
-            
+
             with pytest.raises(ValueError, match="LLM service error"):
                 generate_sql("Show me the first 5 customers.")
 
@@ -699,9 +699,9 @@ class TestLLMAPIErrorHandling:
 
         with patch("backend.agents.clarification_resolver.client") as mock_client:
             mock_client.chat.completions.create.return_value = response
-            
+
             result = resolve_clarification("Show me the best customer.", "Highest revenue")
-            
+
             # Should use fallback concatenation
             assert "best customer" in result.lower()
             assert "highest revenue" in result.lower()
@@ -720,9 +720,9 @@ class TestLLMAPIErrorHandling:
 
         with patch("backend.agents.clarification_resolver.client") as mock_client:
             mock_client.chat.completions.create.return_value = response
-            
+
             result = resolve_clarification("Show me the best customer.", "Highest revenue")
-            
+
             # Should use fallback concatenation
             assert "best customer" in result.lower()
             assert "highest revenue" in result.lower()
@@ -735,11 +735,11 @@ class TestLLMAPIErrorHandling:
 class TestSQLExecution:
     """
     Regression tests for SQL execution failures.
-    
+
     Root cause: Production database tables were not initialized
     because there was no startup event handler to run create_tables
     and insert_sample_data.
-    
+
     Fix: Added @app.on_event("startup") handler to initialize
     database on application startup.
     """
@@ -750,9 +750,9 @@ class TestSQLExecution:
         should execute and return a result.
         """
         from backend.database.executor import execute_query
-        
+
         result = execute_query("SELECT COUNT(*) AS total_customers FROM customers")
-        
+
         assert "columns" in result
         assert "rows" in result
         assert result["columns"] == ["total_customers"]
@@ -765,9 +765,9 @@ class TestSQLExecution:
         SELECT * FROM customers; should return all columns and rows.
         """
         from backend.database.executor import execute_query
-        
+
         result = execute_query("SELECT * FROM customers LIMIT 5")
-        
+
         assert "columns" in result
         assert "rows" in result
         # Should have standard customer columns
@@ -780,7 +780,7 @@ class TestSQLExecution:
         JOIN queries should work with proper relationships.
         """
         from backend.database.executor import execute_query
-        
+
         sql = """
             SELECT c.name, COUNT(o.id) AS order_count
             FROM customers c
@@ -789,9 +789,9 @@ class TestSQLExecution:
             ORDER BY order_count DESC
             LIMIT 5
         """
-        
+
         result = execute_query(sql)
-        
+
         assert "columns" in result
         assert "rows" in result
         assert result["columns"] == ["name", "order_count"]
@@ -801,9 +801,9 @@ class TestSQLExecution:
         Aggregate functions with aliases should work.
         """
         from backend.database.executor import execute_query
-        
+
         result = execute_query("SELECT COUNT(*) AS total, SUM(price) AS total_price FROM products")
-        
+
         assert result["columns"] == ["total", "total_price"]
         assert len(result["rows"]) == 1
 
@@ -812,11 +812,11 @@ class TestSQLExecution:
         The executor should respect MAX_ROWS limit.
         """
         from backend.database.executor import execute_query, MAX_ROWS
-        
+
         # Generate a query that would return more than MAX_ROWS if unbound
         # For this test, just verify the limit is applied
         result = execute_query("SELECT * FROM generate_series(1, 10) AS x")
-        
+
         assert len(result["rows"]) <= MAX_ROWS
 
 
@@ -827,7 +827,7 @@ class TestSQLExecution:
 class TestDestructiveIntentDetection:
     """
     Tests for destructive intent detection in the orchestrator.
-    
+
     The orchestrator should reject DELETE, DROP, UPDATE, INSERT
     requests BEFORE clarification or SQL generation.
     """
@@ -839,10 +839,10 @@ class TestDestructiveIntentDetection:
         """
         from unittest.mock import patch
         from backend.agents.orchestrator import process_question
-        
+
         # No mocks needed — should be rejected before any LLM calls
         result = process_question("Delete the first row")
-        
+
         assert result["status"] == "rejected"
         assert "reason" in result
         assert "read-only" in result["reason"].lower()
@@ -850,27 +850,27 @@ class TestDestructiveIntentDetection:
     def test_drop_table_rejected_immediately(self):
         """'Drop the customers table' should be rejected."""
         from backend.agents.orchestrator import process_question
-        
+
         result = process_question("Drop the customers table")
-        
+
         assert result["status"] == "rejected"
         assert "read-only" in result["reason"].lower()
 
     def test_update_request_rejected_immediately(self):
         """'Update customer email' should be rejected."""
         from backend.agents.orchestrator import process_question
-        
+
         result = process_question("Update customer email addresses")
-        
+
         assert result["status"] == "rejected"
         assert "read-only" in result["reason"].lower()
 
     def test_insert_request_rejected_immediately(self):
         """'Add a new customer' should be rejected."""
         from backend.agents.orchestrator import process_question
-        
+
         result = process_question("Add a new customer")
-        
+
         assert result["status"] == "rejected"
         assert "read-only" in result["reason"].lower()
 
@@ -880,26 +880,26 @@ class TestDestructiveIntentDetection:
         """
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         # Mock LLM responses for the safe query
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT * FROM customers"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("Show me all customers")
-        
+
         assert result["status"] == "sql_generated"
         assert "sql" in result
 
@@ -909,12 +909,12 @@ class TestDestructiveIntentDetection:
         resolver should reject it even if the user provides clarification.
         """
         from backend.agents.orchestrator import process_clarified_question
-        
+
         result = process_clarified_question(
             "Delete customers",
             "From Mumbai"
         )
-        
+
         assert result["status"] == "rejected"
         assert "read-only" in result["reason"].lower()
 
@@ -924,22 +924,22 @@ class TestDestructiveIntentDetection:
         """
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_clarified_question
-        
+
         # Mock resolver to return a destructive question
         resolver_choice = MagicMock()
         resolver_choice.message.content = "Delete all customers from Mumbai"
         resolver_choice.finish_reason = "stop"
         resolver_response = MagicMock()
         resolver_response.choices = [resolver_choice]
-        
+
         with patch("backend.agents.clarification_resolver.client") as mock_resolver_client:
             mock_resolver_client.chat.completions.create.return_value = resolver_response
-            
+
             result = process_clarified_question(
                 "Show me customers",  # Original is safe
                 "Delete them"  # But user answer makes it destructive
             )
-        
+
         assert result["status"] == "rejected"
         assert "read-only" in result["reason"].lower()
 
@@ -950,15 +950,15 @@ class TestDestructiveIntentDetection:
         """
         from unittest.mock import patch
         from backend.agents.orchestrator import process_question
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 result = process_question("Delete the first row")
-                
+
                 # Should not have called any LLM endpoints
                 mock_clarif_client.chat.completions.create.assert_not_called()
                 mock_sql_client.chat.completions.create.assert_not_called()
-        
+
         assert result["status"] == "rejected"
 
 
@@ -970,10 +970,10 @@ class TestRejectionResponseIntegration:
     """
     Tests for the complete rejection flow from orchestrator
     through FastAPI endpoint to frontend response handling.
-    
+
     Root cause of production issue: Frontend didn't handle
     the "rejected" status, causing no visible response.
-    
+
     Fix: Added RejectedResponse type to frontend and proper
     handling in ChatPanel to display rejection as error.
     """
@@ -984,9 +984,9 @@ class TestRejectionResponseIntegration:
         with a clear reason message.
         """
         from backend.agents.orchestrator import process_question
-        
+
         result = process_question("update omkar name to ganesh")
-        
+
         assert result["status"] == "rejected"
         assert "reason" in result
         assert "read-only" in result["reason"].lower()
@@ -996,9 +996,9 @@ class TestRejectionResponseIntegration:
     def test_delete_first_row_returns_rejected_status(self):
         """'DELETE first row' should return rejected status."""
         from backend.agents.orchestrator import process_question
-        
+
         result = process_question("DELETE first row")
-        
+
         assert result["status"] == "rejected"
         assert "reason" in result
         assert "read-only" in result["reason"].lower()
@@ -1006,19 +1006,19 @@ class TestRejectionResponseIntegration:
     def test_drop_table_returns_rejected_status(self):
         """'DROP TABLE customers' should return rejected status."""
         from backend.agents.orchestrator import process_question
-        
+
         result = process_question("DROP TABLE customers")
-        
+
         assert result["status"] == "rejected"
         assert "reason" in result
 
     def test_rejected_response_has_original_question(self):
         """Rejected response should include the original question."""
         from backend.agents.orchestrator import process_question
-        
+
         question = "delete all customers"
         result = process_question(question)
-        
+
         assert result["status"] == "rejected"
         assert "original_question" in result
         assert result["original_question"] == question
@@ -1029,26 +1029,26 @@ class TestRejectionResponseIntegration:
         """
         from unittest.mock import patch, MagicMock
         from backend.agents.orchestrator import process_question
-        
+
         # Mock LLM responses
         clarification_choice = MagicMock()
         clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
         clarification_choice.finish_reason = "stop"
         clarification_response = MagicMock()
         clarification_response.choices = [clarification_choice]
-        
+
         sql_choice = MagicMock()
         sql_choice.message.content = "SELECT * FROM customers WHERE name = 'Omkar'"
         sql_response = MagicMock()
         sql_response.choices = [sql_choice]
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 mock_clarif_client.chat.completions.create.return_value = clarification_response
                 mock_sql_client.chat.completions.create.return_value = sql_response
-                
+
                 result = process_question("Show me customer named Omkar")
-        
+
         # Should generate SQL, not reject
         assert result["status"] == "sql_generated"
         assert "sql" in result
@@ -1059,13 +1059,13 @@ class TestRejectionResponseIntegration:
         """
         from unittest.mock import patch
         from backend.agents.orchestrator import process_question
-        
+
         with patch("backend.rag.metadata_search.metadata_search") as mock_rag:
             result = process_question("delete all customers")
-            
+
             # RAG should not have been called for rejected requests
             mock_rag.assert_not_called()
-        
+
         assert result["status"] == "rejected"
 
     def test_rejection_happens_before_llm_calls(self):
@@ -1074,13 +1074,272 @@ class TestRejectionResponseIntegration:
         """
         from unittest.mock import patch
         from backend.agents.orchestrator import process_question
-        
+
         with patch("backend.agents.clarification.client") as mock_clarif_client:
             with patch("backend.agents.sql_generator.client") as mock_sql_client:
                 result = process_question("update customer emails")
-                
+
                 # No LLM calls should have been made
                 mock_clarif_client.chat.completions.create.assert_not_called()
                 mock_sql_client.chat.completions.create.assert_not_called()
-        
+
         assert result["status"] == "rejected"
+
+
+# ============================================================
+# Destructive Intent Detection — Production Security Bug
+# ============================================================
+
+class TestConditionalUpdateSecurityBug:
+    """
+    Regression tests for the production security bug where conditional
+    UPDATE requests like "If name is omkar then update it to Ganesh"
+    were not consistently rejected.
+
+    Root cause: Intent validator UPDATE patterns only matched when the
+    verb appeared BEFORE the data field (e.g., "update name"), not when
+    reversed (e.g., "name ... update"). Conditional patterns with "when"
+    were too broad, causing false positives.
+
+    Fix: Added bidirectional patterns for UPDATE operations and refined
+    conditional patterns to require clear modification context.
+    """
+
+    def test_conditional_update_if_then_rejected(self):
+        """
+        'If name is omkar then update it to Ganesh' must be rejected
+        before clarification.
+        """
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("If name is omkar then update it to Ganesh")
+
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+        assert "original_question" in result
+
+    def test_simple_update_statement_rejected(self):
+        """'update omkar name to ganesh' must be rejected."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("update omkar name to ganesh")
+
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+
+    def test_passive_voice_update_rejected(self):
+        """'name should be updated to ganesh' must be rejected."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("name should be updated to ganesh")
+
+        assert result["status"] == "rejected"
+
+    def test_set_to_pattern_rejected(self):
+        """'set name to ganesh where name is omkar' must be rejected."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("set name to ganesh where name is omkar")
+
+        assert result["status"] == "rejected"
+
+    def test_replace_pattern_rejected(self):
+        """'replace omkar with ganesh' must be rejected."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("replace omkar with ganesh")
+
+        assert result["status"] == "rejected"
+
+    def test_where_conditional_update_rejected(self):
+        """'where status is active set it to inactive' must be rejected."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("where status is active set it to inactive")
+
+        assert result["status"] == "rejected"
+
+    def test_if_customer_condition_rejected(self):
+        """'if customer is premium then change status' must be rejected."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("if customer is premium then change status")
+
+        assert result["status"] == "rejected"
+
+    def test_delete_first_row_rejected(self):
+        """'Delete first row' must be rejected (from requirements)."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("Delete first row")
+
+        assert result["status"] == "rejected"
+        assert "delete" in result["reason"].lower() or "remove" in result["reason"].lower()
+
+    def test_drop_table_rejected(self):
+        """'DROP TABLE customers' must be rejected (from requirements)."""
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("DROP TABLE customers")
+
+        assert result["status"] == "rejected"
+        assert "drop" in result["reason"].lower()
+
+    def test_harmless_update_word_not_rejected(self):
+        """
+        'Show me the latest product updates' should NOT be rejected.
+        The word "update" appears in a read-only context.
+        """
+        from unittest.mock import patch, MagicMock
+        from backend.agents.orchestrator import process_question
+
+        # Mock LLM responses
+        clarification_choice = MagicMock()
+        clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
+        clarification_response = MagicMock()
+        clarification_response.choices = [clarification_choice]
+
+        sql_choice = MagicMock()
+        sql_choice.message.content = "SELECT * FROM products ORDER BY updated_at DESC LIMIT 10"
+        sql_response = MagicMock()
+        sql_response.choices = [sql_choice]
+
+        with patch("backend.agents.clarification.client") as mock_clarif_client:
+            with patch("backend.agents.sql_generator.client") as mock_sql_client:
+                mock_clarif_client.chat.completions.create.return_value = clarification_response
+                mock_sql_client.chat.completions.create.return_value = sql_response
+
+                result = process_question("Show me the latest product updates")
+
+        # Should NOT be rejected
+        assert result["status"] == "sql_generated"
+
+    def test_display_update_history_not_rejected(self):
+        """'Display update history' should NOT be rejected."""
+        from unittest.mock import patch, MagicMock
+        from backend.agents.orchestrator import process_question
+
+        clarification_choice = MagicMock()
+        clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
+        clarification_response = MagicMock()
+        clarification_response.choices = [clarification_choice]
+
+        sql_choice = MagicMock()
+        sql_choice.message.content = "SELECT * FROM audit_log WHERE action = 'UPDATE'"
+        sql_response = MagicMock()
+        sql_response.choices = [sql_choice]
+
+        with patch("backend.agents.clarification.client") as mock_clarif_client:
+            with patch("backend.agents.sql_generator.client") as mock_sql_client:
+                mock_clarif_client.chat.completions.create.return_value = clarification_response
+                mock_sql_client.chat.completions.create.return_value = sql_response
+
+                result = process_question("Display update history")
+
+        assert result["status"] == "sql_generated"
+
+
+# ============================================================
+# Clarification bypass prevention
+# ============================================================
+
+class TestClarificationBypassPrevention:
+    """
+    Test that destructive requests cannot bypass intent validation
+    through the clarification flow.
+    """
+
+    def test_clarified_update_still_rejected(self):
+        """
+        If the original question was destructive, the clarification
+        follow-up must also be rejected.
+        """
+        from backend.agents.orchestrator import process_clarified_question
+
+        result = process_clarified_question(
+            original_question="update customer name",
+            user_answer="customers table"
+        )
+
+        assert result["status"] == "rejected"
+
+    def test_resolved_destructive_question_rejected(self):
+        """
+        If clarification resolver combines inputs into a destructive
+        final question, it must be rejected.
+        """
+        from unittest.mock import patch, MagicMock
+        from backend.agents.orchestrator import process_clarified_question
+
+        # Mock the resolver to return a destructive final question
+        choice = MagicMock()
+        choice.message.content = "Delete all customers from Mumbai"
+        response = MagicMock()
+        response.choices = [choice]
+
+        with patch("backend.agents.clarification_resolver.client") as mock_client:
+            mock_client.chat.completions.create.return_value = response
+
+            result = process_clarified_question(
+                original_question="Remove entries",
+                user_answer="customers in Mumbai"
+            )
+
+        assert result["status"] == "rejected"
+
+
+# ============================================================
+# Frontend rejected status handling
+# ============================================================
+
+class TestFrontendRejectedStatusHandling:
+    """
+    Test that the /ask endpoint returns proper rejected responses
+    and that the frontend can handle them.
+    """
+
+    def test_ask_endpoint_returns_rejected_for_destructive_query(self):
+        """
+        POST /ask with a destructive query must return status=rejected.
+        """
+        from backend.agents.orchestrator import process_question
+
+        # Call orchestrator directly (no need for FastAPI TestClient)
+        result = process_question("If name is omkar then update it to Ganesh")
+
+        # Verify the orchestrator returns proper rejected response
+        assert result["status"] == "rejected"
+        assert "reason" in result
+        assert "read-only" in result["reason"].lower()
+        assert "original_question" in result
+
+    def test_clarify_endpoint_returns_rejected_for_destructive_question(self):
+        """
+        POST /clarify with a destructive original question must return
+        status=rejected.
+        """
+        from backend.agents.orchestrator import process_clarified_question
+
+        # Call orchestrator directly
+        result = process_clarified_question(
+            original_question="delete customer records",
+            user_answer="from Mumbai"
+        )
+
+        assert result["status"] == "rejected"
+
+    def test_rejected_response_has_all_required_fields(self):
+        """
+        Rejected response must include status, reason, and original_question
+        so the frontend can display proper error messages.
+        """
+        from backend.agents.orchestrator import process_question
+
+        result = process_question("DROP TABLE customers")
+
+        assert "status" in result
+        assert result["status"] == "rejected"
+        assert "reason" in result
+        assert "original_question" in result
+        assert isinstance(result["reason"], str)
+        assert len(result["reason"]) > 0

@@ -40,26 +40,56 @@ import re
 DESTRUCTIVE_PATTERNS = [
     # DELETE operations (broad matching)
     r"\b(delete|remove|erase|clear|wipe|purge|destroy)\b",
-    
+
+    # SQL-style DELETE syntax
+    # Matches: "DELETE FROM table", "DELETE FROM customers WHERE"
+    r"\b(delete)\b.{0,20}\b(from)\b",
+
     # DROP operations
     r"\b(drop)\b.*\b(table|database|schema|index|view)\b",
     r"\b(table|database|schema|index|view)\b.*\b(drop)\b",
-    
-    # UPDATE operations (with context)
-    r"\b(update|modify|change|edit|alter)\b.*\b(customer|product|order|user|price|email|name|data|field|column|value|record|row|entry)\b",
-    r"\b(set)\b.*\b(to|=)\b",  # "set price to 100" or "set email = ..."
-    
+
+    # UPDATE operations (bidirectional to catch all word orders)
+    # Requires clear modification context: verbs + data entities
+    # Forward: "update customer name", "change the price"
+    # Reverse: "name should be updated", "price must be changed"
+    r"\b(update|modify|change|edit|alter)\b.{0,50}\b(customer|product|order|user|price|email|name|data|field|column|value|record|row|entry|status|address|phone|quantity)\b",
+    r"\b(customer|product|order|user|price|email|name|data|field|column|value|record|row|entry|status|address|phone|quantity)\b.{0,50}\b(be\s+)?(updated|modified|changed|edited|altered)\b",
+
+    # SQL-style UPDATE syntax
+    # Matches: "UPDATE table SET column = value", "UPDATE customers SET name = 'X'"
+    r"\b(update)\b.{1,100}\b(set)\b",
+
+    # SET operations (common SQL-like phrasing)
+    # Matches: "set price to 100", "set it to", "status to active"
+    r"\b(set)\b.*\b(to|=)\b",
+    r"\b(to|=)\b.*\b(set)\b",
+
+    # REPLACE operations (natural language updates)
+    # Matches: "replace X with Y", "change X from A to B"
+    r"\b(replace|swap)\b.{0,50}\b(with|to)\b",
+
+    # Conditional updates (if-then patterns requiring modification intent)
+    # Matches: "if name is X then update it", "where status is Y change to Z"
+    # Requires either "then" or target entity after the condition
+    r"\b(if|where)\b.{5,100}\b(then|set|update|change|modify)\b.{0,50}\b(it|to|customer|product|name|email|status|price|data|record)\b",
+    r"\b(if|where)\b.{5,100}\b(customer|product|order|user|price|email|name|status)\b.{0,50}\b(set|update|change|modify)\b",
+
     # INSERT operations (with "new" or "add")
     r"\b(insert|add|create|append)\b.*\b(new|another|a)\b",
     r"\b(new|another)\b.{0,30}\b(customer|product|order|user|row|entry|record)\b",
-    
+
+    # SQL-style INSERT syntax
+    # Matches: "INSERT INTO table", "INSERT INTO customers VALUES"
+    r"\b(insert)\b.{0,20}\b(into)\b",
+
     # TRUNCATE/RESET operations
     r"\b(truncate|empty|reset)\b.*\b(table|data|database|all)\b",
     r"\b(table|data)\b.*\b(truncate|empty|reset)\b",
-    
+
     # Generic destructive verbs (require destructive context)
     r"\b(destroy|obliterate|nuke|trash)\b",
-    
+
     # "Get rid of" phrase
     r"\bget\s+rid\s+of\b",
 ]
@@ -109,7 +139,7 @@ def is_destructive_intent(question: str) -> tuple[bool, str]:
         if match:
             # Extract the destructive verb from the match
             matched_text = match.group(0)
-            
+
             # Common destructive verbs for clear error messages
             if any(word in matched_text for word in ["delete", "remove", "erase", "clear", "wipe", "purge", "destroy"]):
                 verb = "delete/remove"
@@ -123,7 +153,7 @@ def is_destructive_intent(question: str) -> tuple[bool, str]:
                 verb = "truncate"
             else:
                 verb = "destructive operation"
-            
+
             return True, (
                 f"This application only supports read-only SELECT queries. "
                 f"Requests to {verb} data are not allowed."

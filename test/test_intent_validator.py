@@ -113,6 +113,17 @@ class TestDeleteOperations:
         is_dest, reason = is_destructive_intent("Destroy customer records")
         assert is_dest is True
 
+    def test_sql_delete_syntax(self):
+        """Test SQL DELETE syntax detection."""
+        tests = [
+            "DELETE FROM customers",
+            "DELETE FROM customers WHERE id = 1",
+            "delete from orders where status = 'cancelled'",
+        ]
+        for test in tests:
+            is_dest, _ = is_destructive_intent(test)
+            assert is_dest is True, f"Failed to detect: {test}"
+
     def test_natural_phrasing(self):
         """Test various natural language phrasings."""
         phrases = [
@@ -188,6 +199,51 @@ class TestUpdateOperations:
         is_dest, reason = is_destructive_intent("Set price to 100")
         assert is_dest is True
 
+    def test_sql_update_syntax(self):
+        """Test SQL UPDATE syntax detection."""
+        tests = [
+            "UPDATE customers SET city = 'Mumbai'",
+            "UPDATE customers SET name = 'ganesh' WHERE name = 'omkar'",
+            "update products set price = 100",
+        ]
+        for test in tests:
+            is_dest, _ = is_destructive_intent(test)
+            assert is_dest is True, f"Failed to detect: {test}"
+
+    def test_conditional_update_if_then(self):
+        """Test if-then conditional update patterns."""
+        is_dest, reason = is_destructive_intent("If name is omkar then update it to Ganesh")
+        assert is_dest is True
+        assert "read-only" in reason.lower()
+
+    def test_conditional_update_where(self):
+        """Test WHERE conditional update patterns."""
+        is_dest, reason = is_destructive_intent("Where status is active set it to inactive")
+        assert is_dest is True
+
+    def test_reversed_word_order(self):
+        """Test UPDATE patterns where data field comes before verb."""
+        phrases = [
+            "name should be updated to ganesh",
+            "customer email needs to be changed",
+            "price must be modified",
+            "status should be altered",
+        ]
+        for phrase in phrases:
+            is_dest, _ = is_destructive_intent(phrase)
+            assert is_dest is True, f"Failed to detect: {phrase}"
+
+    def test_replace_operations(self):
+        """Test REPLACE-style update operations."""
+        phrases = [
+            "replace omkar with ganesh",
+            "swap customer name with new value",
+            "replace the price with 500",
+        ]
+        for phrase in phrases:
+            is_dest, _ = is_destructive_intent(phrase)
+            assert is_dest is True, f"Failed to detect: {phrase}"
+
     def test_natural_update_phrasing(self):
         """Test various natural language phrasings."""
         phrases = [
@@ -195,6 +251,8 @@ class TestUpdateOperations:
             "Change product name to Laptop Pro",
             "Modify customer city",
             "Edit order amount",
+            "update omkar name to ganesh",
+            "set name to ganesh where name is omkar",
         ]
         for phrase in phrases:
             is_dest, _ = is_destructive_intent(phrase)
@@ -228,6 +286,17 @@ class TestInsertOperations:
     def test_add_another_row(self):
         is_dest, reason = is_destructive_intent("Add another customer row")
         assert is_dest is True
+
+    def test_sql_insert_syntax(self):
+        """Test SQL INSERT syntax detection."""
+        tests = [
+            "INSERT INTO customers VALUES (1, 'test')",
+            "INSERT INTO customers (name, email) VALUES ('test', 'test@example.com')",
+            "insert into products values (1, 'Product', 100)",
+        ]
+        for test in tests:
+            is_dest, _ = is_destructive_intent(test)
+            assert is_dest is True, f"Failed to detect: {test}"
 
     def test_natural_insert_phrasing(self):
         """Test various natural language phrasings."""
@@ -348,3 +417,16 @@ class TestFalsePositivesPrevention:
         """'creator' as a noun should not match 'create' verb."""
         is_dest, _ = is_destructive_intent("Show me the product creator")
         assert is_dest is False
+
+    def test_update_in_harmless_context(self):
+        """Word 'update' in contexts that are clearly about showing/viewing data."""
+        safe_phrases = [
+            "Show me the latest product updates",
+            "Display update history",
+            "When was the last update timestamp",
+            "Show customers who need an update notification",
+            "Get the software update log",
+        ]
+        for phrase in safe_phrases:
+            is_dest, _ = is_destructive_intent(phrase)
+            assert is_dest is False, f"False positive detected for: {phrase}"
