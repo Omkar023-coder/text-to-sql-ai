@@ -257,23 +257,47 @@ def generate_sql(
     # Call LLM
     # --------------------------------------------------------
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": system_prompt
-            },
-            {
-                "role": "user",
-                "content": question
-            }
-        ],
-        temperature=0,
-        max_tokens=512,   # SQL rarely needs more than 256 tokens;
-                          # 512 is generous for complex multi-table queries
-        timeout=30.0,     # seconds — fail fast if Groq is unavailable
-    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": question
+                }
+            ],
+            temperature=0,
+            max_tokens=512,   # SQL rarely needs more than 256 tokens;
+                              # 512 is generous for complex multi-table queries
+            timeout=30.0,     # seconds — fail fast if Groq is unavailable
+        )
+
+    except Exception as error:
+        # LLM API call failed (auth error, timeout, rate limit, etc.)
+        import logging
+        logging.getLogger(__name__).error(
+            "SQL generator LLM call failed: %s. question=%r",
+            error,
+            question[:100],
+        )
+        raise ValueError(
+            f"Unable to generate SQL due to LLM service error: {type(error).__name__}"
+        )
+
+    # Handle None response
+    if response.choices[0].message.content is None:
+        import logging
+        logging.getLogger(__name__).error(
+            "SQL generator received None content. question=%r",
+            question[:100],
+        )
+        raise ValueError(
+            "The model returned an empty response. Please try again."
+        )
 
     sql = response.choices[0].message.content.strip()
 

@@ -397,23 +397,56 @@ def analyze_question(
         schema_context=formatted_schema
     )
 
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
-        messages=[
-            {
-                "role": "system",
-                "content": prompt
-            },
-            {
-                "role": "user",
-                "content": question
-            }
-        ],
-        temperature=0,
-        max_tokens=512,   # 256 was too small for JSON with long suggestion strings;
-                          # 512 prevents truncated-JSON parse errors
-        timeout=30.0,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": prompt
+                },
+                {
+                    "role": "user",
+                    "content": question
+                }
+            ],
+            temperature=0,
+            max_tokens=512,   # 256 was too small for JSON with long suggestion strings;
+                              # 512 prevents truncated-JSON parse errors
+            timeout=30.0,
+        )
+
+    except Exception as error:
+        # LLM API call failed (auth error, timeout, rate limit, etc.)
+        # Log the error and return a safe fallback that allows
+        # the pipeline to continue to SQL generation
+        import logging
+        logging.getLogger(__name__).error(
+            "Clarification LLM call failed: %s. "
+            "Treating as clear to allow SQL generation. "
+            "question=%r",
+            error,
+            question[:100],
+        )
+        # Return "clear" so the pipeline proceeds to SQL generation
+        # rather than showing a confusing clarification prompt
+        return {
+            "needs_clarification": False,
+            "clarification_question": "",
+            "suggestions": []
+        }
+
+    # Handle None response
+    if response.choices[0].message.content is None:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification received None content; treating as clear."
+        )
+        return {
+            "needs_clarification": False,
+            "clarification_question": "",
+            "suggestions": []
+        }
 
     response_text = response.choices[0].message.content
     finish_reason = response.choices[0].finish_reason

@@ -103,29 +103,57 @@ def resolve_clarification(
             "User clarification answer cannot be empty."
         )
 
-    response = client.chat.completions.create(
-        model="openai/gpt-oss-20b",
+    try:
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-20b",
 
-        messages=[
-            {
-                "role": "system",
-                "content": RESOLVER_PROMPT
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Original question:\n"
-                    f"{original_question}\n\n"
-                    f"User clarification:\n"
-                    f"{user_answer}"
-                )
-            }
-        ],
+            messages=[
+                {
+                    "role": "system",
+                    "content": RESOLVER_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Original question:\n"
+                        f"{original_question}\n\n"
+                        f"User clarification:\n"
+                        f"{user_answer}"
+                    )
+                }
+            ],
 
-        temperature=0,
-        max_tokens=256,  # resolved question is one sentence
-        timeout=30.0,
-    )
+            temperature=0,
+            max_tokens=256,  # resolved question is one sentence
+            timeout=30.0,
+        )
+
+    except Exception as error:
+        # LLM API call failed (auth error, timeout, rate limit, etc.)
+        # Log the error and raise a descriptive ValueError
+        import logging
+        logging.getLogger(__name__).error(
+            "Clarification resolver LLM call failed: %s. "
+            "original_question=%r, user_answer=%r",
+            error,
+            original_question[:100],
+            user_answer[:100],
+        )
+        raise ValueError(
+            "Unable to process clarification due to LLM service error."
+        )
+
+    # Handle None response (shouldn't happen but defensive)
+    if response.choices[0].message.content is None:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification resolver received None content. "
+            "original_question=%r, user_answer=%r",
+            original_question[:100],
+            user_answer[:100],
+        )
+        # Fallback: simple concatenation
+        return f"{original_question} {user_answer}"
 
     final_question = (
         response.choices[0]
@@ -138,5 +166,14 @@ def resolve_clarification(
         "```",
         ""
     ).strip()
+
+    # If LLM returned empty string, use fallback
+    if not final_question:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification resolver returned empty string. "
+            "Using fallback concatenation."
+        )
+        return f"{original_question} {user_answer}"
 
     return final_question

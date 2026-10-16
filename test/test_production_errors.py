@@ -459,3 +459,106 @@ class TestClarificationRoutingProduction:
         except ValueError as e:
             if "did not return a valid SELECT" in str(e):
                 pytest.skip("Groq API key invalid or model unavailable")
+
+
+# ============================================================
+# LLM API error handling
+# ============================================================
+
+class TestLLMAPIErrorHandling:
+    """
+    Tests for proper error handling when the LLM API fails
+    (invalid key, rate limit, timeout, etc.)
+    """
+
+    def test_clarification_handles_api_error_gracefully(self):
+        """
+        If the clarification LLM call fails, return needs_clarification=false
+        so the pipeline can proceed to SQL generation rather than showing
+        a confusing error.
+        """
+        from backend.agents.clarification import analyze_question
+        from unittest.mock import patch
+
+        with patch("backend.agents.clarification.client") as mock_client:
+            # Simulate API authentication error
+            mock_client.chat.completions.create.side_effect = Exception("API Error: 401 Unauthorized")
+            
+            result = analyze_question("Show me the first 5 customers.", schema_context="...")
+            
+            # Should not raise; should return clear so SQL generation proceeds
+            assert result["needs_clarification"] is False
+
+    def test_clarification_resolver_handles_api_error_with_descriptive_error(self):
+        """
+        If the clarification resolver LLM call fails, raise ValueError
+        with a descriptive message so the /clarify endpoint can return
+        a user-friendly error.
+        """
+        from backend.agents.clarification_resolver import resolve_clarification
+        from unittest.mock import patch
+        import pytest
+
+        with patch("backend.agents.clarification_resolver.client") as mock_client:
+            mock_client.chat.completions.create.side_effect = Exception("API Error: 401 Unauthorized")
+            
+            with pytest.raises(ValueError, match="LLM service error"):
+                resolve_clarification("Show me the best customer.", "Highest revenue")
+
+    def test_sql_generator_handles_api_error_with_descriptive_error(self):
+        """
+        If the SQL generator LLM call fails, raise ValueError with a
+        descriptive message.
+        """
+        from backend.agents.sql_generator import generate_sql
+        from unittest.mock import patch
+        import pytest
+
+        with patch("backend.agents.sql_generator.client") as mock_client:
+            mock_client.chat.completions.create.side_effect = Exception("API Error: 401 Unauthorized")
+            
+            with pytest.raises(ValueError, match="LLM service error"):
+                generate_sql("Show me the first 5 customers.")
+
+    def test_clarification_resolver_handles_none_response(self):
+        """
+        If the LLM returns None content, use a fallback concatenation
+        rather than crashing.
+        """
+        from backend.agents.clarification_resolver import resolve_clarification
+        from unittest.mock import patch, MagicMock
+
+        choice = MagicMock()
+        choice.message.content = None
+        response = MagicMock()
+        response.choices = [choice]
+
+        with patch("backend.agents.clarification_resolver.client") as mock_client:
+            mock_client.chat.completions.create.return_value = response
+            
+            result = resolve_clarification("Show me the best customer.", "Highest revenue")
+            
+            # Should use fallback concatenation
+            assert "best customer" in result.lower()
+            assert "highest revenue" in result.lower()
+
+    def test_clarification_resolver_handles_empty_string_response(self):
+        """
+        If the LLM returns an empty string, use a fallback concatenation.
+        """
+        from backend.agents.clarification_resolver import resolve_clarification
+        from unittest.mock import patch, MagicMock
+
+        choice = MagicMock()
+        choice.message.content = ""
+        response = MagicMock()
+        response.choices = [choice]
+
+        with patch("backend.agents.clarification_resolver.client") as mock_client:
+            mock_client.chat.completions.create.return_value = response
+            
+            result = resolve_clarification("Show me the best customer.", "Highest revenue")
+            
+            # Should use fallback concatenation
+            assert "best customer" in result.lower()
+            assert "highest revenue" in result.lower()
