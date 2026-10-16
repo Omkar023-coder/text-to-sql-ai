@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/chat/EmptyState";
 import { QuestionInput } from "@/components/chat/QuestionInput";
 import { TurnView } from "@/components/chat/TurnView";
 import { looksLikeSql, INVALID_SQL_MESSAGE } from "@/lib/sqlValidation";
-import type { AskResponse, ClarifyResponse } from "@/types/api";
+import type { ClarifyResponse } from "@/types/api";
 import type { useConversation } from "@/hooks/useConversation";
 
 // The prop type mirrors the return value of useConversation
@@ -40,6 +40,7 @@ export function ChatPanel({ conversation, selectedTurnId }: ChatPanelProps) {
     startAsk,
     resolveAskSql,
     resolveAskClarify,
+    resolveAskRejected,
     failAsk,
     startClarify,
     resolveClarify,
@@ -89,7 +90,7 @@ export function ChatPanel({ conversation, selectedTurnId }: ChatPanelProps) {
         return;
       }
 
-      const response: AskResponse = result.data;
+      const response = result.data;
 
       if (response.status === "sql_generated") {
         // Validate that the LLM actually returned a SELECT query,
@@ -99,11 +100,17 @@ export function ChatPanel({ conversation, selectedTurnId }: ChatPanelProps) {
           return;
         }
         resolveAskSql(id, response);
-      } else {
+      } else if (response.status === "clarification_required") {
         resolveAskClarify(id, response);
+      } else if (response.status === "rejected") {
+        // Destructive intent detected — show rejection reason as error
+        resolveAskRejected(id, response.reason);
+      } else {
+        // Unknown status — should never happen
+        failAsk(id, "Unexpected response from server. Please try again.");
       }
     },
-    [isLoading, startAsk, resolveAskSql, resolveAskClarify, failAsk]
+    [isLoading, startAsk, resolveAskSql, resolveAskClarify, resolveAskRejected, failAsk]
   );
 
   // ── Handle clarification answer ────────────────────────

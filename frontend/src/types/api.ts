@@ -18,7 +18,7 @@ export interface AskRequest {
   question: string;
 }
 
-export type AskResponse = SqlGeneratedResponse | ClarificationRequiredResponse;
+export type AskResponse = SqlGeneratedResponse | ClarificationRequiredResponse | RejectedResponse;
 
 export interface SqlGeneratedResponse {
   status: "sql_generated";
@@ -32,6 +32,12 @@ export interface ClarificationRequiredResponse {
   original_question: string;
   clarification_question: string;
   suggestions: string[];
+}
+
+export interface RejectedResponse {
+  status: "rejected";
+  reason: string;
+  original_question: string;
 }
 
 // ============================================================

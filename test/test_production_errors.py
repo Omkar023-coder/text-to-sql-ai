@@ -960,3 +960,127 @@ class TestDestructiveIntentDetection:
                 mock_sql_client.chat.completions.create.assert_not_called()
         
         assert result["status"] == "rejected"
+
+
+# ============================================================
+# Frontend-backend rejection response integration
+# ============================================================
+
+class TestRejectionResponseIntegration:
+    """
+    Tests for the complete rejection flow from orchestrator
+    through FastAPI endpoint to frontend response handling.
+    
+    Root cause of production issue: Frontend didn't handle
+    the "rejected" status, causing no visible response.
+    
+    Fix: Added RejectedResponse type to frontend and proper
+    handling in ChatPanel to display rejection as error.
+    """
+
+    def test_update_request_returns_rejected_status(self):
+        """
+        'update omkar name to ganesh' should return rejected status
+        with a clear reason message.
+        """
+        from backend.agents.orchestrator import process_question
+        
+        result = process_question("update omkar name to ganesh")
+        
+        assert result["status"] == "rejected"
+        assert "reason" in result
+        assert "read-only" in result["reason"].lower()
+        # Should mention the operation type
+        assert any(word in result["reason"].lower() for word in ["update", "modify"])
+
+    def test_delete_first_row_returns_rejected_status(self):
+        """'DELETE first row' should return rejected status."""
+        from backend.agents.orchestrator import process_question
+        
+        result = process_question("DELETE first row")
+        
+        assert result["status"] == "rejected"
+        assert "reason" in result
+        assert "read-only" in result["reason"].lower()
+
+    def test_drop_table_returns_rejected_status(self):
+        """'DROP TABLE customers' should return rejected status."""
+        from backend.agents.orchestrator import process_question
+        
+        result = process_question("DROP TABLE customers")
+        
+        assert result["status"] == "rejected"
+        assert "reason" in result
+
+    def test_rejected_response_has_original_question(self):
+        """Rejected response should include the original question."""
+        from backend.agents.orchestrator import process_question
+        
+        question = "delete all customers"
+        result = process_question(question)
+        
+        assert result["status"] == "rejected"
+        assert "original_question" in result
+        assert result["original_question"] == question
+
+    def test_safe_query_not_rejected(self):
+        """
+        Safe queries should still work normally — not rejected.
+        """
+        from unittest.mock import patch, MagicMock
+        from backend.agents.orchestrator import process_question
+        
+        # Mock LLM responses
+        clarification_choice = MagicMock()
+        clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
+        clarification_choice.finish_reason = "stop"
+        clarification_response = MagicMock()
+        clarification_response.choices = [clarification_choice]
+        
+        sql_choice = MagicMock()
+        sql_choice.message.content = "SELECT * FROM customers WHERE name = 'Omkar'"
+        sql_response = MagicMock()
+        sql_response.choices = [sql_choice]
+        
+        with patch("backend.agents.clarification.client") as mock_clarif_client:
+            with patch("backend.agents.sql_generator.client") as mock_sql_client:
+                mock_clarif_client.chat.completions.create.return_value = clarification_response
+                mock_sql_client.chat.completions.create.return_value = sql_response
+                
+                result = process_question("Show me customer named Omkar")
+        
+        # Should generate SQL, not reject
+        assert result["status"] == "sql_generated"
+        assert "sql" in result
+
+    def test_rejection_happens_before_rag(self):
+        """
+        Verify that rejection happens before expensive RAG operations.
+        """
+        from unittest.mock import patch
+        from backend.agents.orchestrator import process_question
+        
+        with patch("backend.rag.metadata_search.metadata_search") as mock_rag:
+            result = process_question("delete all customers")
+            
+            # RAG should not have been called for rejected requests
+            mock_rag.assert_not_called()
+        
+        assert result["status"] == "rejected"
+
+    def test_rejection_happens_before_llm_calls(self):
+        """
+        Verify that rejection happens before any LLM API calls.
+        """
+        from unittest.mock import patch
+        from backend.agents.orchestrator import process_question
+        
+        with patch("backend.agents.clarification.client") as mock_clarif_client:
+            with patch("backend.agents.sql_generator.client") as mock_sql_client:
+                result = process_question("update customer emails")
+                
+                # No LLM calls should have been made
+                mock_clarif_client.chat.completions.create.assert_not_called()
+                mock_sql_client.chat.completions.create.assert_not_called()
+        
+        assert result["status"] == "rejected"

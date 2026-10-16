@@ -51,6 +51,7 @@ type Action =
       id: string;
       response: ClarificationRequiredResponse;
     }
+  | { type: "ASK_REJECTED"; id: string; reason: string }
   | { type: "ASK_ERROR"; id: string; message: string }
   | { type: "CLARIFY_START"; id: string }
   | { type: "CLARIFY_DONE"; id: string; response: ClarifyResponse }
@@ -116,6 +117,16 @@ function reducer(
           status: "clarifying",
           clarification_question: r.clarification_question,
           suggestions: r.suggestions,
+        }),
+        loadingTurnId: null,
+      };
+    }
+
+    case "ASK_REJECTED": {
+      return {
+        turns: updateTurn(state.turns, action.id, {
+          status: "error",
+          error: action.reason,
         }),
         loadingTurnId: null,
       };
@@ -226,6 +237,13 @@ export function useConversation() {
     []
   );
 
+  const resolveAskRejected = useCallback(
+    (id: string, reason: string) => {
+      dispatch({ type: "ASK_REJECTED", id, reason });
+    },
+    []
+  );
+
   const failAsk = useCallback((id: string, message: string) => {
     dispatch({ type: "ASK_ERROR", id, message });
   }, []);
@@ -275,6 +293,7 @@ export function useConversation() {
     startAsk,
     resolveAskSql,
     resolveAskClarify,
+    resolveAskRejected,
     failAsk,
     startClarify,
     resolveClarify,
