@@ -818,3 +818,145 @@ class TestSQLExecution:
         result = execute_query("SELECT * FROM generate_series(1, 10) AS x")
         
         assert len(result["rows"]) <= MAX_ROWS
+
+
+# ============================================================
+# Destructive intent detection
+# ============================================================
+
+class TestDestructiveIntentDetection:
+    """
+    Tests for destructive intent detection in the orchestrator.
+    
+    The orchestrator should reject DELETE, DROP, UPDATE, INSERT
+    requests BEFORE clarification or SQL generation.
+    """
+
+    def test_delete_request_rejected_immediately(self):
+        """
+        'Delete the first row' should be rejected immediately,
+        without asking clarification.
+        """
+        from unittest.mock import patch
+        from backend.agents.orchestrator import process_question
+        
+        # No mocks needed — should be rejected before any LLM calls
+        result = process_question("Delete the first row")
+        
+        assert result["status"] == "rejected"
+        assert "reason" in result
+        assert "read-only" in result["reason"].lower()
+
+    def test_drop_table_rejected_immediately(self):
+        """'Drop the customers table' should be rejected."""
+        from backend.agents.orchestrator import process_question
+        
+        result = process_question("Drop the customers table")
+        
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+
+    def test_update_request_rejected_immediately(self):
+        """'Update customer email' should be rejected."""
+        from backend.agents.orchestrator import process_question
+        
+        result = process_question("Update customer email addresses")
+        
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+
+    def test_insert_request_rejected_immediately(self):
+        """'Add a new customer' should be rejected."""
+        from backend.agents.orchestrator import process_question
+        
+        result = process_question("Add a new customer")
+        
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+
+    def test_safe_query_not_rejected(self):
+        """
+        'Show me all customers' should NOT be rejected — it's safe.
+        """
+        from unittest.mock import patch, MagicMock
+        from backend.agents.orchestrator import process_question
+        
+        # Mock LLM responses for the safe query
+        clarification_choice = MagicMock()
+        clarification_choice.message.content = '{"needs_clarification": false, "clarification_question": "", "suggestions": []}'
+        clarification_choice.finish_reason = "stop"
+        clarification_response = MagicMock()
+        clarification_response.choices = [clarification_choice]
+        
+        sql_choice = MagicMock()
+        sql_choice.message.content = "SELECT * FROM customers"
+        sql_response = MagicMock()
+        sql_response.choices = [sql_choice]
+        
+        with patch("backend.agents.clarification.client") as mock_clarif_client:
+            with patch("backend.agents.sql_generator.client") as mock_sql_client:
+                mock_clarif_client.chat.completions.create.return_value = clarification_response
+                mock_sql_client.chat.completions.create.return_value = sql_response
+                
+                result = process_question("Show me all customers")
+        
+        assert result["status"] == "sql_generated"
+        assert "sql" in result
+
+    def test_clarification_resolver_rejects_destructive_original(self):
+        """
+        If the original question was destructive, the clarification
+        resolver should reject it even if the user provides clarification.
+        """
+        from backend.agents.orchestrator import process_clarified_question
+        
+        result = process_clarified_question(
+            "Delete customers",
+            "From Mumbai"
+        )
+        
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+
+    def test_clarification_resolver_rejects_destructive_resolved(self):
+        """
+        If the resolved question becomes destructive, reject it.
+        """
+        from unittest.mock import patch, MagicMock
+        from backend.agents.orchestrator import process_clarified_question
+        
+        # Mock resolver to return a destructive question
+        resolver_choice = MagicMock()
+        resolver_choice.message.content = "Delete all customers from Mumbai"
+        resolver_choice.finish_reason = "stop"
+        resolver_response = MagicMock()
+        resolver_response.choices = [resolver_choice]
+        
+        with patch("backend.agents.clarification_resolver.client") as mock_resolver_client:
+            mock_resolver_client.chat.completions.create.return_value = resolver_response
+            
+            result = process_clarified_question(
+                "Show me customers",  # Original is safe
+                "Delete them"  # But user answer makes it destructive
+            )
+        
+        assert result["status"] == "rejected"
+        assert "read-only" in result["reason"].lower()
+
+    def test_delete_request_never_reaches_llm(self):
+        """
+        Verify that destructive requests are rejected WITHOUT
+        making any LLM API calls.
+        """
+        from unittest.mock import patch
+        from backend.agents.orchestrator import process_question
+        
+        with patch("backend.agents.clarification.client") as mock_clarif_client:
+            with patch("backend.agents.sql_generator.client") as mock_sql_client:
+                result = process_question("Delete the first row")
+                
+                # Should not have called any LLM endpoints
+                mock_clarif_client.chat.completions.create.assert_not_called()
+                mock_sql_client.chat.completions.create.assert_not_called()
+        
+        assert result["status"] == "rejected"
