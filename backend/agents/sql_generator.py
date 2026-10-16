@@ -279,5 +279,20 @@ def generate_sql(
 
     sql = sql.replace("```sql", "")
     sql = sql.replace("```", "")
+    sql = sql.strip()
 
-    return sql.strip()
+    # Validate the LLM actually returned SQL, not a refusal or
+    # error explanation.  If the response doesn't start with SELECT
+    # it cannot be a safe read-only query.
+    import re as _re
+    if not _re.match(r"^SELECT\b", sql, _re.IGNORECASE):
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "SQL generator returned non-SELECT response: %r", sql[:200]
+        )
+        raise ValueError(
+            "The model did not return a valid SELECT query. "
+            "Please rephrase your question."
+        )
+
+    return sql

@@ -318,6 +318,63 @@ def metadata_search(
                 score -= 8
 
         # =====================================================
+        # 7. Single-table question boost
+        #
+        # If the question clearly asks about one table's data
+        # ("show me customers", "list products") without any
+        # relationship signals, boost columns from that table
+        # and penalize columns from other tables.
+        #
+        # Detect table name in question tokens (singular or plural).
+        # =====================================================
+
+        SINGLE_TABLE_SIGNALS = {
+            "show",
+            "list",
+            "first",
+            "last",
+            "get",
+            "fetch",
+            "display",
+            "all",
+        }
+
+        # Check if question is a simple single-table query
+        has_single_table_signal = bool(
+            question_tokens.intersection(SINGLE_TABLE_SIGNALS)
+        )
+
+        # Detect which table is explicitly mentioned
+        table_mentions = {
+            "customer": ["customer", "customers"],
+            "product": ["product", "products"],
+            "order": ["order", "orders"],
+        }
+
+        mentioned_table = None
+        for domain_name, variants in table_mentions.items():
+            for variant in variants:
+                if variant in question_tokens:
+                    mentioned_table = domain_name
+                    break
+            if mentioned_table:
+                break
+
+        # If it's a single-table question about a specific table,
+        # boost that table's columns and penalize others
+        if has_single_table_signal and mentioned_table:
+            doc_domain = metadata.get("domain", "").lower()
+
+            # Boost columns from the mentioned table
+            if doc_domain == mentioned_table:
+                score += 10
+
+            # Penalize columns from other tables UNLESS they're
+            # needed for a relationship (already handled above)
+            elif doc_domain and doc_category != "relationship":
+                score -= 5
+
+        # =====================================================
         # Save relevant results
         # =====================================================
 

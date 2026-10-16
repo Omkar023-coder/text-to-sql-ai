@@ -65,6 +65,11 @@ If the schema contains only ONE column that can answer
 the question, the question is CLEAR even if the wording
 is vague in everyday language.
 
+CRITICAL: If the schema below shows ONLY ONE TABLE,
+the question is ALMOST ALWAYS CLEAR unless the question
+uses genuinely ambiguous terms like "best" or "top"
+WITHOUT specifying a column or metric.
+
 Example:
 
 Schema contains: products.price REAL
@@ -73,6 +78,25 @@ Question: "Show me the most expensive products."
 
 This is CLEAR — "most expensive" can only mean
 ORDER BY products.price DESC.
+Do NOT ask for clarification.
+
+Example:
+
+Schema contains ONLY: customers.id, customers.name, customers.city
+
+Question: "Show me the first 5 customers."
+
+This is CLEAR — there is only one table (customers),
+and "first 5" means LIMIT 5.
+Do NOT ask for clarification.
+
+Example:
+
+Schema contains ONLY: products.id, products.name, products.price
+
+Question: "List all products."
+
+This is CLEAR — there is only one table (products).
 Do NOT ask for clarification.
 
 Example of genuine ambiguity:
@@ -101,6 +125,9 @@ Examples of clear questions (do NOT ask for clarification):
 "Show me the most expensive products."
 "Show me customer purchases."
 "Show customer revenue."
+"Show me the first 5 customers."
+"List all products."
+"Get all orders."
 
 Examples of ambiguous questions (DO ask for clarification):
 
@@ -227,9 +254,23 @@ def parse_clarification_response(response_text: str) -> dict:
         result = json.loads(json_text)
 
     except json.JSONDecodeError as error:
-        raise ValueError(
-            f"Invalid JSON returned by clarification engine: {error}"
+        # Truncated or malformed JSON from the LLM (commonly caused by
+        # a max_tokens limit that cuts the response mid-string).
+        # Treat as "no clarification needed" so the pipeline continues
+        # to SQL generation rather than surfacing a confusing error.
+        # Log the raw text server-side for diagnostics.
+        import logging
+        logging.getLogger(__name__).warning(
+            "Clarification JSON parse failed (%s); treating as clear. "
+            "raw=%r",
+            error,
+            response_text[:200] if response_text else "",
         )
+        return {
+            "needs_clarification": False,
+            "clarification_question": "",
+            "suggestions": []
+        }
 
     required_fields = [
         "needs_clarification",
@@ -347,7 +388,8 @@ def analyze_question(
             }
         ],
         temperature=0,
-        max_tokens=256,  # clarification response is a small JSON object
+        max_tokens=512,   # 256 was too small for JSON with long suggestion strings;
+                          # 512 prevents truncated-JSON parse errors
         timeout=30.0,
     )
 
