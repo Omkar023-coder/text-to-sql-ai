@@ -4,6 +4,10 @@
  * Base fetch wrapper used by all API modules.
  *
  * Responsibilities:
+ * - Resolve the backend base URL from VITE_API_BASE_URL
+ *   (set this to the Render backend URL in Vercel env vars).
+ *   Falls back to "" (empty string) so relative URLs work
+ *   when FastAPI serves the frontend from the same origin.
  * - Set Content-Type header
  * - Parse JSON response
  * - Map non-2xx HTTP responses to ApiError
@@ -18,6 +22,21 @@
  */
 
 import type { ApiError } from "@/types/api";
+
+// ============================================================
+// Backend base URL
+//
+// Set VITE_API_BASE_URL in Vercel environment variables to
+// your Render backend URL, e.g.:
+//   https://text-to-sql-ai-backend.onrender.com
+//
+// Leave unset (or empty) when FastAPI serves the frontend
+// itself (local dev with `npm run dev` proxy, or production
+// build served by uvicorn).
+// ============================================================
+
+const API_BASE =
+  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 // ============================================================
 // Result type
@@ -36,7 +55,7 @@ export async function post<TBody, TResponse>(
   body: TBody
 ): Promise<Result<TResponse>> {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE}${url}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -89,7 +108,7 @@ export async function get<TResponse>(
   url: string
 ): Promise<Result<TResponse>> {
   try {
-    const response = await fetch(url, {
+    const response = await fetch(`${API_BASE}${url}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",

@@ -47,8 +47,19 @@ openai==1.109.1
 
 # ── RAG / Embeddings ──────────────────────────────────────
 # sentence-transformers requires torch and transformers.
-# torch is installed separately (see instructions above).
 # transformers must stay at 4.41.x for sentence-transformers 3.0.0 compatibility.
+#
+# PyTorch CPU-only build — must be installed from the PyTorch wheel index.
+# The +cpu local version label is not available on PyPI.
+#
+# The render.yaml buildCommand and the GitHub Actions workflow both
+# install torch before this file is read:
+#   pip install torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
+#
+# If you install manually without that step first, pip will pull the
+# CUDA build (~2 GB) from PyPI.  Use the sequence in the file header.
+--find-links https://download.pytorch.org/whl/cpu
+torch==2.2.2+cpu
 sentence-transformers==3.0.0
 transformers==4.41.2
 numpy==1.26.4

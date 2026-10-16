@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: text-to-sql-ai-backend
+    runtime: python
+    pythonVersion: "3.11.7"
+
+    # ── Build ─────────────────────────────────────────────
+    # Install CPU-only PyTorch first (not on PyPI main index),
+    # then install all other project dependencies.
+    buildCommand: >
+      pip install torch==2.2.2+cpu
+      --index-url https://download.pytorch.org/whl/cpu
+      && pip install -r requirements.txt
+
+    # ── Start ─────────────────────────────────────────────
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+
+    # ── Health check ──────────────────────────────────────
+    healthCheckPath: /health
+
+    # ── Environment variables ─────────────────────────────
+    # Real values must be set in the Render dashboard.
+    # Only the names are listed here — never the values.
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # must be set in Render dashboard
+      - key: GROQ_API_KEY
+        sync: false          # must be set in Render dashboard
+      - key: CORS_ORIGINS
+        value: https://text-to-sql-ai-iota.vercel.app
+      - key: PYTHON_VERSION
+        value: "3.11.7"
