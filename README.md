@@ -74,7 +74,9 @@ Destructive operations are blocked immediately:
 
 ## 🏗️ System Architecture
 
-![System Architecture](assets/architecture.png)
+## System Architecture
+
+![System Architecture](b08be6b4-8035-4f8f-aacf-83ace6777c75.png)
 
 **Workflow:**
 
