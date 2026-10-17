@@ -4,469 +4,196 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111.0-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-316192?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Groq](https://img.shields.io/badge/Groq-LLM-F55036?style=flat-square)](https://console.groq.com/)
 
-[Features](#-key-features) · [Architecture](#-system-architecture) · [Quick Start](#-quick-start) · [API Reference](#-api-documentation) · [Testing](#-testing)
+> **Smart India Hackathon 2025 — National Winner** 🏆
 
 ---
 
-## 📋 Table of Contents
+## 📋 Project Overview
 
-- [Project Overview](#-project-overview)
-- [Demo](#-demo)
-- [Key Features](#-key-features)
-- [System Architecture](#-system-architecture)
-- [Technology Stack](#-technology-stack)
-- [How It Works](#-how-it-works)
-- [Project Structure](#-project-structure)
-- [Prerequisites](#-prerequisites)
-- [Installation and Setup](#-installation-and-setup)
-- [PostgreSQL Database Configuration](#-postgresql-database-configuration)
-- [Environment Variables](#-environment-variables)
-- [Running the Application](#-running-the-application)
-- [API Documentation](#-api-documentation)
-- [Example Usage](#-example-usage)
-- [Testing](#-testing)
-- [Security Considerations](#-security-considerations)
-- [Troubleshooting](#-troubleshooting)
-- [Future Enhancements](#-future-enhancements)
-- [Author](#-author)
+Text-to-SQL AI is an intelligent system that allows users to query a **PostgreSQL database** using natural language. Instead of writing SQL, users simply ask questions in plain English, and the application generates, validates, and executes SQL queries automatically.
 
----
+**Problem it solves:**  
+Non-technical users often need data from databases but don't know SQL. This application bridges that gap by converting natural language into safe, read-only SQL queries.
 
-## 🎯 Project Overview
-
-Text-to-SQL AI is an intelligent database query system that bridges the gap between natural language and SQL. It allows users to ask questions about their data in plain English and automatically generates, validates, and executes SQL queries against a PostgreSQL database.
-
-**What makes it special:**
-- **Schema-aware clarification**: Instead of guessing ambiguous terms like "best customer," it asks you to clarify
-- **RAG-enhanced generation**: Retrieves relevant schema context before generating SQL
-- **Read-only security**: Enforces SELECT-only queries with multiple validation layers
-- **Professional UI**: Three-panel React interface with conversation history, SQL editing, and data visualization
-- **Production-ready**: Comprehensive test suite (393 tests), security hardening, and error handling
-
-This project was developed as part of my winning solution for **Smart India Hackathon 2025 (National Winner)** 🏆
+**Key highlights:**
+- **Schema-aware clarification** — Asks for clarification when questions are ambiguous (e.g., "best customer")
+- **RAG-powered SQL generation** — Retrieves relevant schema before generating SQL
+- **Multi-layer security** — Blocks destructive queries (UPDATE, DELETE, DROP) at every stage
+- **Professional React UI** — Three-panel interface with chat, SQL editor, and data visualization
+- **Production-ready** — 393 passing tests, rate limiting, error handling
 
 ---
 
 ## 🖼️ Demo
 
-### Application Interface
 
-The application features a professional three-panel layout with real-time query processing and results visualization:
-
-![Text-to-SQL AI Application Demo](assets/demo.png)
-
-*Interactive three-panel interface: History sidebar with sessions and schema explorer · Chat panel with conversation flow · Data panel with SQL editor, results table, and charts*
 
 ---
 
-### Query Response Types
+### ✅ Successful Query
 
-The system intelligently handles three types of user interactions:
+When a question is clear, SQL is generated and executed directly:
 
-#### 1. ✅ Successful Queries — Direct SQL Generation
+![Successful Query]![alt text](image.png)
 
-When a question is clear and unambiguous, the system generates SQL directly and executes it:
-
-**Example:** "What is the total revenue?"
-
-![Successful Query Example](assets/success-query.png)
-
-**Response:**
-- ✅ Green success indicator
-- Generated SQL query displayed
-- Schema context used shown
-- Results rendered in table format
-- Execution time displayed
+**Example:** "What is the total revenue?"  
+**Result:** Green success indicator, SQL displayed, results in table format
 
 ---
 
-#### 2. ❓ Ambiguous Queries — Clarification Required
+### ❓ Ambiguous Query — Clarification Required
 
-When a question contains ambiguous terms, the system asks for clarification before generating SQL:
+When terms are unclear, the system asks for clarification:
 
-**Example:** "Show me the best customers."
+![Clarification Query]![alt text](image-1.png)
+![alt text](image-2.png)
 
-![Clarification Query Example](assets/clarification-query.png)
-
-**Response:**
-- 🟡 Yellow clarification card
-- Question asking what "best" means
-- **Suggestion chips** with possible interpretations:
-  - "Customers with highest total revenue"
-  - "Customers with most orders"
-  - "Customers with highest average order amount"
-- Option to type custom clarification
-
-Once the user selects or provides clarification, the system generates the appropriate SQL.
+**Example:** "Show me the best customers."  
+**Response:** Yellow clarification card with suggestion chips:
+- "Customers with highest total revenue"
+- "Customers with most orders"
+- "Customers with highest average order amount"
 
 ---
 
-#### 3. ❌ Rejected Queries — Security Protection
+### ❌ Unsafe Query — Rejected
 
-When a request attempts a destructive operation (UPDATE, DELETE, INSERT, etc.), the system rejects it immediately:
+Destructive operations are blocked immediately:
 
-**Example:** "INSERT INTO customers (name) VALUES ('Omkar');"
+![Rejected Query]![alt text](image-3.png)
+![alt text](image-4.png)
 
-![Rejected Query Example](assets/rejected-query.png)
-
-**Response:**
-- 🔴 Red error indicator
-- Clear security message: *"This application only supports read-only SELECT queries. Requests to insert/add data are not allowed."*
-- "Try again" button to submit a new query
-- No SQL generated or executed
-
-This multi-layer security ensures the database remains read-only at all times.
-
----
-
-## ✨ Key Features
-
-### 🤖 Intelligent Query Pipeline
-- **Natural language to SQL**: Powered by Groq's `openai/gpt-oss-20b` model
-- **RAG-based schema retrieval**: Uses semantic embeddings (`sentence-transformers`) to find relevant columns before SQL generation
-- **Hybrid search**: Combines keyword matching, semantic embeddings, and metadata filtering (RRF fusion)
-- **Ambiguity detection**: Schema-aware clarification engine asks follow-up questions only when needed
-
-### 🛡️ Security & Validation
-- **Multi-layer destructive intent detection**: Natural language patterns + SQL syntax detection
-- **SELECT-only enforcement**: Blocks UPDATE, DELETE, INSERT, DROP, ALTER, TRUNCATE before execution
-- **SQL validator**: Final mandatory security layer validates generated queries
-- **Read-only database**: Cannot modify data under any circumstances
-- **Input sanitization**: Protected against SQL injection and prompt injection attacks
-
-### 💻 Modern Frontend (React + TypeScript)
-- **Three-panel layout**: History sidebar · Chat panel · Data panel
-- **Conversation flow**: Natural chat interface with message bubbles and clarification cards
-- **SQL editor**: Manual editing with syntax highlighting and safety indicators
-- **Results visualization**: Sortable data tables + automatic chart generation (bar, line, pie)
-- **Persistent history**: localStorage-based session management with search and pinning
-- **Schema explorer**: Browse all tables, columns, and data types
-- **Real-time health monitoring**: Database connectivity status badge
-
-### 📊 Data Analysis
-- **Smart chart suggestions**: Automatically recommends chart types based on query results
-- **Interactive visualizations**: Built with Recharts (bar charts, line charts, pie charts)
-- **Export-ready results**: Tables with sorting, filtering, and pagination
+**Example:** "DELETE FROM customers WHERE city = 'Pune';"  
+**Response:** Red error indicator with security message rejecting the operation
 
 ---
 
 ## 🏗️ System Architecture
 
-![Text-to-SQL AI System Architecture](assets/architecture.png)
+![System Architecture](assets/architecture.png)
 
-### Request Flow
+**Workflow:**
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    User Question (Natural Language)              │
-└────────────────────────────┬────────────────────────────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  POST /ask                    │
-              │  (FastAPI Endpoint)           │
-              └──────────────┬────────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  Intent Validator             │  ← Rejects destructive requests
-              │  (Regex + SQL syntax)         │     (UPDATE, DELETE, etc.)
-              └──────────────┬────────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  RAG Metadata Search          │  ← Semantic + keyword + hybrid
-              │  (Hybrid retrieval)           │     Retrieves relevant schema
-              └──────────────┬────────────────┘
-                             │
-                             ▼
-              ┌──────────────────────────────┐
-              │  Clarification Engine         │  ← LLM judges ambiguity
-              │  (Schema-aware LLM)           │     using retrieved context
-              └──────────────┬────────────────┘
-                             │
-                   ┌─────────┴─────────┐
-                   │                   │
-                   ▼                   ▼
-          Ambiguous?           Clear?
-                   │                   │
-                   ▼                   ▼
-    ┌──────────────────────┐  ┌──────────────────────┐
-    │ Return clarification │  │  SQL Generator        │
-    │ suggestions          │  │  (LLM with schema)    │
-    └──────────────────────┘  └──────────┬───────────┘
-                                          │
-                                          ▼
-                             ┌──────────────────────────┐
-                             │  SQL Validator            │  ← SELECT-only check
-                             │  (Regex + keyword block)  │     Multi-statement block
-                             └──────────┬────────────────┘
-                                        │
-                                        ▼
-                             ┌──────────────────────────┐
-                             │  POST /execute            │
-                             │  (Query Executor)         │
-                             └──────────┬────────────────┘
-                                        │
-                                        ▼
-                             ┌──────────────────────────┐
-                             │  PostgreSQL Database      │
-                             │  (Customers, Products,    │
-                             │   Orders tables)          │
-                             └──────────┬────────────────┘
-                                        │
-                                        ▼
-                             ┌──────────────────────────┐
-                             │  JSON Results             │
-                             │  (Columns + Rows)         │
-                             └──────────────────────────┘
-```
-
-### Architecture Layers
-
-| Layer | Component | Technology | Purpose |
-|-------|-----------|-----------|---------|
-| **Presentation** | React Frontend | React 18 + TypeScript | User interface and interaction |
-| **API** | FastAPI Server | FastAPI 0.111.0 | REST endpoints + static file serving |
-| **Security** | Intent Validator | Regex patterns | Detect destructive requests |
-| **AI Pipeline** | Orchestrator | Python | Coordinate RAG → Clarification → SQL |
-| **Retrieval** | Hybrid Search | sentence-transformers | Schema context retrieval |
-| **Generation** | SQL Generator | Groq LLM | Natural language → SQL |
-| **Validation** | SQL Validator | Regex + keyword block | SELECT-only enforcement |
-| **Execution** | Query Executor | SQLAlchemy | Safe query execution |
-| **Storage** | PostgreSQL | PostgreSQL 16+ | Relational database |
+1. **User submits question** → FastAPI endpoint receives natural language input
+2. **Intent validation** → Regex patterns detect destructive requests (UPDATE, DELETE, etc.)
+3. **RAG schema retrieval** → Hybrid search finds relevant columns using semantic + keyword matching
+4. **Clarification check** → LLM judges if question is ambiguous
+   - **Ambiguous?** → Return clarification suggestions
+   - **Clear?** → Proceed to SQL generation
+5. **SQL generation** → Groq LLM generates PostgreSQL query using retrieved schema
+6. **SQL validation** → Final security check ensures SELECT-only
+7. **Query execution** → SQLAlchemy executes against PostgreSQL
+8. **Results returned** → JSON response with columns and rows
 
 ---
 
-## 🛠️ Technology Stack
+## ✨ Key Features
 
-### Backend
+- **Natural language to SQL** — Powered by Groq's `openai/gpt-oss-20b` model
+- **RAG-based schema retrieval** — Uses sentence-transformers (`all-MiniLM-L6-v2`) for semantic search
+- **Hybrid search** — Combines semantic embeddings, keyword matching, and metadata filtering (RRF fusion)
+- **Schema-aware clarification** — LLM asks follow-up questions when needed
+- **Multi-layer security** — Intent detection + SQL validation blocks all destructive operations
+- **Read-only enforcement** — Blocks UPDATE, DELETE, INSERT, DROP, ALTER, TRUNCATE
+- **Three-panel React UI** — Chat interface, SQL editor with syntax highlighting, data tables and charts
+- **Interactive visualizations** — Auto-generates bar charts, line charts, and pie charts using Recharts
+- **Persistent history** — localStorage saves conversations and allows session management
+- **Schema explorer** — Browse tables, columns, and data types in sidebar
+- **Rate limiting** — Protects API endpoints (configurable per endpoint)
+- **Health monitoring** — Real-time database connection status
+- **Comprehensive testing** — 393 passing tests covering security, SQL generation, and API endpoints
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **Python** | 3.11+ | Backend programming language |
-| **FastAPI** | 0.111.0 | Modern async web framework |
-| **Uvicorn** | 0.29.0 | ASGI server with hot-reload |
-| **SQLAlchemy** | 2.0.25 | Database ORM and query builder |
-| **psycopg2-binary** | 2.9.9 | PostgreSQL database adapter |
-| **OpenAI SDK** | 1.109.1 | Groq API client (OpenAI-compatible) |
-| **sentence-transformers** | 3.0.0 | Semantic embeddings for RAG |
-| **PyTorch** | 2.2.2+cpu | Deep learning framework (CPU) |
-| **python-dotenv** | 1.0.1 | Environment variable management |
-| **slowapi** | 0.1.10 | Rate limiting middleware |
-| **pytest** | 7.4.0 | Testing framework |
+---
 
-### Frontend
+## 🛠️ Tech Stack
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **React** | 18.3.1 | UI component library |
-| **TypeScript** | 5.6.3 | Type-safe JavaScript |
-| **Vite** | 5.4.11 | Build tool and dev server |
-| **Tailwind CSS** | 3.4.15 | Utility-first CSS framework |
-| **Recharts** | 2.13.3 | Data visualization library |
-| **Radix UI** | Latest | Accessible component primitives |
-| **Lucide React** | 0.462.0 | Icon library |
-| **Vitest** | 2.1.5 | Unit testing framework |
-| **@testing-library/react** | 16.0.1 | React testing utilities |
+**Backend:**
+- **Python 3.11+** — Backend language
+- **FastAPI 0.111.0** — Web framework
+- **Uvicorn 0.29.0** — ASGI server
+- **PostgreSQL 16+** — Database (via psycopg2-binary 2.9.9)
+- **SQLAlchemy 2.0.25** — ORM and query builder
+- **Groq API (openai/gpt-oss-20b)** — LLM for SQL generation and clarification
+- **sentence-transformers 3.0.0** — Semantic embeddings (`all-MiniLM-L6-v2`)
+- **PyTorch 2.2.2+cpu** — Deep learning framework
+- **slowapi 0.1.10** — Rate limiting
 
-### Database
+**Frontend:**
+- **React 18.3.1** — UI library
+- **TypeScript 5.6.3** — Type-safe JavaScript
+- **Vite 5.4.11** — Build tool
+- **Tailwind CSS 3.4.15** — Styling
+- **Recharts 2.13.3** — Data visualization
+- **Radix UI** — Accessible components
+- **Lucide React 0.462.0** — Icons
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| **PostgreSQL** | 16+ | Production-grade relational database |
-
-### AI/ML
-
-| Model | Provider | Purpose |
-|-------|----------|---------|
-| `openai/gpt-oss-20b` | Groq | SQL generation and clarification |
-| `all-MiniLM-L6-v2` | sentence-transformers | Schema embeddings (384-dim) |
+**Testing:**
+- **pytest 7.4.0** — Backend testing (393 tests)
+- **Vitest 2.1.5** — Frontend unit testing
+- **@testing-library/react 16.0.1** — React component testing
 
 ---
 
 ## 🔄 How It Works
 
-### 1. User Submits Question
-```
-User: "Show me the top 5 customers by revenue"
-```
+### Step-by-Step Flow
 
-### 2. Intent Validation
-- Checks for destructive keywords (UPDATE, DELETE, DROP, etc.)
-- Validates both natural language and SQL syntax patterns
-- **Rejected example**: "Delete customer records" → Status: `rejected`
+1. **User enters question** — Natural language input (e.g., "Show me the top 5 customers by revenue")
 
-### 3. Schema Retrieval (RAG)
-- Semantic search using embeddings
-- Keyword-based search for exact matches
-- Metadata filtering (table relationships)
-- **Hybrid fusion** combines all three using Reciprocal Rank Fusion
-- Returns relevant columns: `customers.name`, `orders.amount`, `orders.customer_id`
+2. **Intent validation** — Checks for destructive keywords in both natural language and SQL syntax
+   - Rejected: "Delete all customers" → Status: `rejected`
 
-### 4. Clarification Check
-- LLM analyzes question + retrieved schema
-- Determines if question is **clear** or **ambiguous**
-- **Clear**: Proceeds to SQL generation
-- **Ambiguous**: Returns clarification suggestions
-  ```json
-  {
-    "status": "clarification_required",
-    "clarification_question": "What do you mean by 'best'?",
-    "suggestions": [
-      "Customer with highest total revenue",
-      "Customer with most orders"
-    ]
-  }
-  ```
+3. **RAG schema retrieval** — Retrieves relevant columns using:
+   - Semantic search (embeddings)
+   - Keyword matching
+   - Metadata filtering
+   - Returns: `customers.name`, `orders.amount`, `orders.customer_id`
 
-### 5. SQL Generation
-- LLM generates PostgreSQL query using retrieved schema context
-- Validates output starts with `SELECT`
-- Strips markdown fences if present
+4. **Clarification check** — LLM analyzes question with schema context
+   - **Clear** → Proceed to SQL generation
+   - **Ambiguous** → Return clarification suggestions
 
-### 6. SQL Validation
-- Final security check: SELECT-only enforcement
-- Blocks forbidden keywords (UPDATE, DELETE, DROP, etc.)
-- Prevents multi-statement queries
-- Checks for dangerous functions (`pg_sleep`, `generate_series`, etc.)
+5. **SQL generation** — Groq LLM generates PostgreSQL SELECT query
 
-### 7. Query Execution
-- Executes validated query against PostgreSQL
-- Returns results as JSON: `{columns: [...], rows: [...]}`
-- Catches and sanitizes database errors
+6. **SQL validation** — Final security layer:
+   - Must start with SELECT
+   - Blocks forbidden keywords (UPDATE, DELETE, DROP, etc.)
+   - Prevents multi-statement queries
+   - Blocks dangerous functions (`pg_sleep`, `generate_series`, etc.)
 
-### 8. Frontend Display
-- Renders results in sortable table
-- Generates chart suggestions based on data types
-- Saves to conversation history (localStorage)
+7. **Query execution** — SQLAlchemy executes validated query against PostgreSQL
+
+8. **Frontend display** — Results rendered in table, charts auto-generated, conversation saved
 
 ---
 
-## 📁 Project Structure
+## 📦 How to Run
 
-```
-text-to-sql-ai/
-│
-├── backend/
-│   ├── main.py                        # FastAPI app with all endpoints
-│   ├── agents/
-│   │   ├── orchestrator.py            # Pipeline coordinator
-│   │   ├── clarification.py           # Schema-aware clarification LLM
-│   │   ├── clarification_resolver.py  # Resolves ambiguous questions
-│   │   └── sql_generator.py           # SQL generation with RAG context
-│   ├── rag/
-│   │   ├── schema_data.py             # Schema corpus (15 columns)
-│   │   ├── metadata_search.py         # Production hybrid retriever
-│   │   ├── keyword_search.py          # Keyword-based retriever
-│   │   ├── semantic_search.py         # Embedding-based retriever
-│   │   └── hybrid_search.py           # RRF hybrid fusion
-│   ├── database/
-│   │   ├── connection.py              # PostgreSQL engine configuration
-│   │   ├── executor.py                # Safe query execution
-│   │   └── setup.py                   # Schema creation + seed data
-│   ├── security/
-│   │   ├── intent_validator.py        # Destructive intent detection
-│   │   └── sql_validator.py           # SELECT-only enforcement
-│   └── evaluation/
-│       ├── retrieval_evaluator.py     # RAG evaluation framework
-│       └── retrieval_metrics.py       # Precision, recall, MRR metrics
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx                    # Root layout + routing
-│   │   ├── api/                       # Typed fetch wrappers
-│   │   │   ├── ask.ts                 # POST /ask
-│   │   │   ├── clarify.ts             # POST /clarify
-│   │   │   ├── execute.ts             # POST /execute
-│   │   │   ├── health.ts              # GET /health
-│   │   │   └── schema.ts              # GET /schema
-│   │   ├── components/
-│   │   │   ├── layout/
-│   │   │   │   ├── Sidebar.tsx        # History + schema explorer
-│   │   │   │   ├── ChatPanel.tsx      # Conversation interface
-│   │   │   │   └── DataPanel.tsx      # SQL editor + results
-│   │   │   ├── chat/
-│   │   │   │   ├── MessageBubble.tsx  # User/assistant messages
-│   │   │   │   ├── ClarificationCard.tsx  # Suggestion chips
-│   │   │   │   └── EmptyState.tsx     # Starter suggestions
-│   │   │   ├── data/
-│   │   │   │   ├── SqlEditor.tsx      # Editable SQL with highlight
-│   │   │   │   ├── ResultsTable.tsx   # Sortable data table
-│   │   │   │   └── ChartView.tsx      # Bar/line/pie charts
-│   │   │   └── sidebar/
-│   │   │       ├── HistoryList.tsx    # Session list
-│   │   │       ├── SchemaExplorer.tsx # Table/column browser
-│   │   │       └── HealthBadge.tsx    # DB status indicator
-│   │   ├── hooks/
-│   │   │   ├── useConversation.ts     # Conversation state management
-│   │   │   ├── useQueryExecution.ts   # SQL execution logic
-│   │   │   └── useHistory.ts          # localStorage persistence
-│   │   ├── lib/
-│   │   │   ├── historyStorage.ts      # Session CRUD operations
-│   │   │   ├── chartSuggestion.ts     # Auto chart type detection
-│   │   │   └── sqlValidation.ts       # Frontend SQL checks
-│   │   └── types/
-│   │       ├── api.ts                 # API request/response types
-│   │       └── conversation.ts        # Turn state types
-│   ├── dist/                          # Production build output
-│   ├── package.json                   # Node dependencies
-│   └── vite.config.ts                 # Build configuration
-│
-├── test/
-│   ├── test_intent_validator.py       # 66 security tests
-│   ├── test_sql_validator.py          # 53 validation tests
-│   ├── test_production_errors.py      # 78 regression tests
-│   ├── test_remaining_security_bug.py # 33 security edge cases
-│   ├── test_orchestrator.py           # 12 pipeline tests
-│   ├── test_clarification.py          # LLM clarification tests
-│   ├── test_hybrid_search.py          # RAG retrieval tests
-│   └── ...                            # 393 tests total
-│
-├── data/
-│   └── evaluation/
-│       └── retrieval_dataset.json     # RAG evaluation queries
-│
-├── .env.example                       # Environment template
-├── requirements.txt                   # Python dependencies
-├── README.md                          # This file
-└── assets/
-    ├── demo.png                       # Application screenshot
-    └── architecture.png               # System diagram
-```
-
----
-
-## ✅ Prerequisites
-
-Before starting, ensure you have:
+### Prerequisites
 
 | Requirement | Version | Download |
 |------------|---------|----------|
-| **Python** | 3.11+ | [python.org](https://www.python.org/downloads/) |
-| **Node.js** | 20+ | [nodejs.org](https://nodejs.org/) |
-| **npm** | 10+ | Included with Node.js |
-| **PostgreSQL** | 16+ | [postgresql.org](https://www.postgresql.org/download/) |
-| **Git** | Latest | [git-scm.com](https://git-scm.com/) |
-| **Groq API Key** | Free tier | [console.groq.com](https://console.groq.com/) |
+| Python | 3.11+ | [python.org](https://www.python.org/downloads/) |
+| PostgreSQL | 16+ | [postgresql.org](https://www.postgresql.org/download/) |
+| Node.js | 20+ | [nodejs.org](https://nodejs.org/) |
+| Groq API Key | Free tier | [console.groq.com](https://console.groq.com/) |
 
 ---
 
-## 🚀 Installation and Setup
-
-### 1. Clone the Repository
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/Omkar023-coder/text-to-sql-ai.git
 cd text-to-sql-ai
 ```
 
-### 2. Create Python Virtual Environment
+---
+
+### 2. Set Up Python Environment
 
 **Windows:**
 ```bash
@@ -480,7 +207,9 @@ python3 -m venv venv
 source venv/bin/activate
 ```
 
-### 3. Install Python Dependencies
+---
+
+### 3. Install Dependencies
 
 ```bash
 # Install PyTorch CPU version first (required for sentence-transformers)
@@ -490,11 +219,11 @@ pip install torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-> **Note**: PyTorch must be installed separately from the PyTorch wheel index because the CPU-only build is not available on PyPI. If you skip the first command, pip will download the CUDA build (~2 GB).
+> **Note:** PyTorch must be installed from the PyTorch wheel index first to get the CPU-only build. Skipping this step will download the CUDA build (~2 GB).
+
+---
 
 ### 4. Configure Environment Variables
-
-Copy the example environment file:
 
 **Windows:**
 ```bash
@@ -506,28 +235,37 @@ copy .env.example .env
 cp .env.example .env
 ```
 
-Edit `.env` and configure the required variables (see [Environment Variables](#-environment-variables) section).
+Edit `.env` and add your credentials:
+
+```env
+# Get free API key at: https://console.groq.com
+GROQ_API_KEY=your_groq_api_key_here
+
+# PostgreSQL connection string
+DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/text_to_sql_ai
+
+# CORS (use http://localhost:5173 for development)
+CORS_ORIGINS=http://localhost:5173
+```
 
 ---
 
-## 🗄️ PostgreSQL Database Configuration
-
-### Option 1: Local PostgreSQL Installation
+### 5. Set Up PostgreSQL Database
 
 #### Install PostgreSQL
 
 **Windows:**
-1. Download PostgreSQL 16+ from [postgresql.org](https://www.postgresql.org/download/windows/)
-2. Run the installer (includes pgAdmin 4 GUI)
-3. Remember the superuser password you set during installation
+1. Download from [postgresql.org](https://www.postgresql.org/download/windows/)
+2. Run installer (includes pgAdmin 4)
+3. Remember the postgres password
 
-**macOS (Homebrew):**
+**macOS:**
 ```bash
 brew install postgresql@16
 brew services start postgresql@16
 ```
 
-**Ubuntu/Debian:**
+**Linux:**
 ```bash
 sudo apt update
 sudo apt install postgresql postgresql-contrib
@@ -536,8 +274,6 @@ sudo systemctl start postgresql
 
 #### Create Database
 
-Open pgAdmin 4 or use the command line:
-
 ```bash
 # Connect to PostgreSQL
 psql -U postgres
@@ -545,135 +281,30 @@ psql -U postgres
 # Create database
 CREATE DATABASE text_to_sql_ai;
 
-# Exit psql
+# Exit
 \q
 ```
 
-#### Update DATABASE_URL
-
-Edit your `.env` file:
-
-```env
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/text_to_sql_ai
-```
-
-Replace `yourpassword` with your PostgreSQL superuser password.
-
-### Option 2: Cloud PostgreSQL (Railway, Render, Supabase)
-
-1. Sign up for a free PostgreSQL service
-2. Create a new PostgreSQL database
-3. Copy the connection string provided
-4. Update `.env`:
-
-```env
-DATABASE_URL=postgresql://user:password@host:5432/dbname?sslmode=require
-```
-
-### Initialize Database Schema and Seed Data
-
-Run the setup script to create tables and insert sample data:
+#### Initialize Schema and Seed Data
 
 ```bash
 python -m backend.database.setup
 ```
 
-**What this does:**
-- Creates `customers`, `products`, and `orders` tables
-- Inserts 10 sample customers
-- Inserts 5 sample products
-- Inserts 12 sample orders
-- **Idempotent**: Safe to run multiple times (uses `ON CONFLICT DO NOTHING`)
+**This creates:**
+- `customers` table (10 sample customers)
+- `products` table (5 sample products: Laptop, Mouse, Keyboard, Monitor, Headphones)
+- `orders` table (12 sample orders)
 
-**Verify database connection:**
-
+**Verify:**
 ```bash
-# Test connection
 psql -U postgres -d text_to_sql_ai -c "SELECT COUNT(*) FROM customers;"
 ```
-
 Expected output: `10`
 
-### Database Schema
-
-```sql
--- Customers table
-CREATE TABLE customers (
-    id          SERIAL         PRIMARY KEY,
-    name        TEXT           NOT NULL,
-    email       TEXT           UNIQUE NOT NULL,
-    city        TEXT,
-    signup_date DATE           NOT NULL
-);
-
--- Products table
-CREATE TABLE products (
-    id       SERIAL          PRIMARY KEY,
-    name     TEXT            UNIQUE NOT NULL,
-    category TEXT,
-    price    NUMERIC(12, 2)  NOT NULL
-);
-
--- Orders table
-CREATE TABLE orders (
-    id          SERIAL          PRIMARY KEY,
-    customer_id INTEGER         NOT NULL REFERENCES customers(id),
-    product_id  INTEGER         NOT NULL REFERENCES products(id),
-    order_date  DATE            NOT NULL,
-    quantity    INTEGER         NOT NULL,
-    amount      NUMERIC(12, 2)  NOT NULL,
-    seed_id     TEXT            UNIQUE
-);
-```
-
 ---
 
-## 🔐 Environment Variables
-
-Create a `.env` file in the project root with the following variables:
-
-### Required Variables
-
-```env
-# Groq API Key (REQUIRED)
-# Get a free API key at: https://console.groq.com
-GROQ_API_KEY=your_actual_groq_api_key_here
-
-# PostgreSQL Database URL (REQUIRED)
-# Format: postgresql://<user>:<password>@<host>:<port>/<database>
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/text_to_sql_ai
-
-# CORS Allowed Origins (REQUIRED for production)
-# Development default: http://localhost:5173
-# Production: Replace with your deployed frontend URL
-CORS_ORIGINS=http://localhost:5173
-```
-
-### Optional Variables (Rate Limiting)
-
-```env
-# Rate limiting per IP address (requests per minute)
-RATE_LIMIT_ASK=20/minute
-RATE_LIMIT_CLARIFY=20/minute
-RATE_LIMIT_EXECUTE=60/minute
-```
-
-### Security Notes
-
-- ⚠️ **Never commit `.env` to version control**
-- ✅ The `.env` file is already in `.gitignore`
-- ✅ API keys are server-side only (never sent to browser)
-- ✅ Database credentials are never exposed in API responses
-- ✅ Use strong passwords for production databases
-- ✅ Enable SSL/TLS for cloud PostgreSQL connections (`?sslmode=require`)
-
----
-
-## ▶️ Running the Application
-
-### Production Mode (Recommended)
-
-#### 1. Build the Frontend
+### 6. Build Frontend (Production Mode)
 
 ```bash
 cd frontend
@@ -682,220 +313,123 @@ npm run build
 cd ..
 ```
 
-This creates an optimized production build in `frontend/dist/`.
+---
 
-#### 2. Start the Backend Server
+### 7. Start the Application
 
 ```bash
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-#### 3. Open in Browser
-
+**Open in browser:**
 ```
 http://127.0.0.1:8000
 ```
 
-The FastAPI server serves both:
-- API endpoints at `/ask`, `/clarify`, `/execute`, etc.
-- React frontend (static files from `frontend/dist/`)
+The FastAPI server serves both the API and the React frontend.
 
-### Development Mode (Hot Reload)
+---
 
-For active development with automatic reloading:
+### Development Mode (Optional)
 
-**Terminal 1 — Backend with hot reload:**
+For hot-reload during development:
+
+**Terminal 1 — Backend:**
 ```bash
-python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+python -m uvicorn backend.main:app --reload
 ```
 
-**Terminal 2 — Frontend dev server:**
+**Terminal 2 — Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
 
-**Open:**
+**Open:** `http://localhost:5173`
+
+---
+
+### Interactive API Docs
+
+**Swagger UI:**  
+`http://127.0.0.1:8000/docs`
+
+**ReDoc:**  
+`http://127.0.0.1:8000/redoc`
+
+---
+
+## 💬 Example Queries
+
+Try these questions after running the application:
+
+### Clear Questions (Direct SQL Generation)
+
 ```
-http://localhost:5173
+"What is the total revenue?"
+"Show me all customers from Pune"
+"How many orders were placed in August 2026?"
+"What is the average order amount?"
+"Show me the top 5 products by quantity sold"
 ```
 
-The Vite dev server (port 5173) proxies all API calls to the FastAPI backend (port 8000).
+### Ambiguous Questions (Clarification Required)
 
-### Interactive API Documentation
-
-FastAPI provides auto-generated interactive docs:
-
-**Swagger UI:**
 ```
-http://127.0.0.1:8000/docs
+"Show me the best customers"
+→ Clarifies: "Best by revenue? By order count? By average order value?"
+
+"Give me top products"
+→ Clarifies: "Top by sales quantity? By revenue? By price?"
 ```
 
-**ReDoc:**
+### Unsafe Questions (Rejected)
+
 ```
-http://127.0.0.1:8000/redoc
+"DELETE FROM customers WHERE city = 'Pune'"
+→ Rejected: Read-only SELECT queries only
+
+"UPDATE products SET price = 10000 WHERE name = 'Laptop'"
+→ Rejected: UPDATE not allowed
+
+"DROP TABLE orders"
+→ Rejected: DROP not allowed
 ```
 
 ---
 
-## 📡 API Documentation
+## 🧪 Testing
 
-### Base URL
-```
-http://127.0.0.1:8000
-```
+Run the test suite:
 
-### Endpoints
-
-#### `POST /ask`
-
-Submit a natural-language question.
-
-**Request Body:**
-```json
-{
-  "question": "How many customers do we have?"
-}
+```bash
+pytest
 ```
 
-**Response (SQL Generated):**
-```json
-{
-  "status": "sql_generated",
-  "question": "How many customers do we have?",
-  "sql": "SELECT COUNT(*) AS total_customers FROM customers;",
-  "retrieved_schema": ["customers.id", "customers.name", "customers.email"]
-}
-```
-
-**Response (Clarification Required):**
-```json
-{
-  "status": "clarification_required",
-  "original_question": "Show me the best customer.",
-  "clarification_question": "What do you mean by 'best'?",
-  "suggestions": [
-    "The customer with the highest total revenue",
-    "The customer with the most orders"
-  ]
-}
-```
-
-**Response (Rejected - Destructive Intent):**
-```json
-{
-  "status": "rejected",
-  "reason": "This application only supports read-only SELECT queries. Requests to update/modify data are not allowed.",
-  "original_question": "Delete customer records"
-}
-```
+**Test coverage:**
+- 393 passing tests
+- Security validation (66 tests)
+- SQL validator (53 tests)
+- Regression tests (78 tests)
+- Integration tests (orchestrator, clarification, RAG)
 
 ---
 
-#### `POST /clarify`
+## 👤 Author
 
-Submit a clarification answer to resolve an ambiguous question.
+**Omkar Sitaram Waghmare**  
+Computer Engineering Student  
+MIT Academy of Engineering, Pune
 
-**Request Body:**
-```json
-{
-  "original_question": "Show me the best customer.",
-  "user_answer": "The customer with the highest total revenue"
-}
-```
+**Achievement:** Smart India Hackathon 2025 — National Winner 🏆
 
-**Response:**
-```json
-{
-  "status": "sql_generated",
-  "original_question": "Show me the best customer.",
-  "user_answer": "The customer with the highest total revenue",
-  "final_question": "Show the customer with the highest total revenue.",
-  "sql": "SELECT c.name, SUM(o.amount) AS total_revenue FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.id, c.name ORDER BY total_revenue DESC LIMIT 1;",
-  "retrieved_schema": ["customers.name", "orders.amount", "orders.customer_id"]
-}
-```
+**LinkedIn:** [linkedin.com/in/omkar-waghmare-7b3ba827b](https://www.linkedin.com/in/omkar-waghmare-7b3ba827b/)
 
 ---
 
-#### `POST /execute`
+## 📄 License
 
-Execute a validated SQL SELECT query.
-
-**Request Body:**
-```json
-{
-  "sql": "SELECT COUNT(*) AS total_customers FROM customers;"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "success",
-  "columns": ["total_customers"],
-  "rows": [[10]]
-}
-```
-
-**Error Response (Non-SELECT):**
-```json
-{
-  "detail": "Only SELECT queries are allowed."
-}
-```
-
----
-
-#### `GET /health`
-
-Check API and database health.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "database": "connected",
-  "model": "openai/gpt-oss-20b"
-}
-```
-
----
-
-#### `GET /schema`
-
-Get database schema metadata (tables, columns, data types).
-
-**Response:**
-```json
-{
-  "tables": [
-    {
-      "name": "customers",
-      "columns": [
-        {"name": "id", "data_type": "INTEGER", "description": "Primary key"},
-        {"name": "name", "data_type": "TEXT", "description": "Customer full name"},
-        {"name": "email", "data_type": "TEXT", "description": "Unique email address"},
-        {"name": "city", "data_type": "TEXT", "description": "Customer city"},
-        {"name": "signup_date", "data_type": "DATE", "description": "Account creation date"}
-      ]
-    },
-    {
-      "name": "products",
-      "columns": [
-        {"name": "id", "data_type": "INTEGER", "description": "Primary key"},
-        {"name": "name", "data_type": "TEXT", "description": "Product name"},
-        {"name": "category", "data_type": "TEXT", "description": "Product category"},
-        {"name": "price", "data_type": "NUMERIC", "description": "Product price"}
-      ]
-    },
-    {
-      "name": "orders",
-      "columns": [
-        {"name": "id", "data_type": "INTEGER", "description": "Primary key"},
-        {"name": "customer_id", "data_type": "INTEGER", "description": "Foreign key to customers"},
-        {"name": "product_id", "data_type": "INTEGER", "description": "Foreign key to products"},
-        {"name": "order_date", "data_type": "DATE", "description": "Order creation date"},
+This project is open-source and available for educational and portfolio purposes.der_date", "data_type": "DATE", "description": "Order creation date"},
         {"name": "quantity", "data_type": "INTEGER", "description": "Number of units ordered"},
         {"name": "amount", "data_type": "NUMERIC", "description": "Total order value"}
       ]
